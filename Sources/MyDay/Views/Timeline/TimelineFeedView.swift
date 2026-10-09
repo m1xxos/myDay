@@ -1,0 +1,329 @@
+import Foundation
+import SwiftUI
+import AppKit
+
+public struct TimelineFeedView: View {
+    @ObservedObject var appState: AppState
+
+    public init(appState: AppState) {
+        self.appState = appState
+    }
+
+    public var body: some View {
+        VStack(spacing: 0) {
+            // Screen Recording Permission Banner (if missing)
+            if !appState.hasScreenPermission {
+                permissionNoticeBanner
+            }
+
+            // Top Header Bar
+            headerBar
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(
+                    ZStack {
+                        Color(NSColor.windowBackgroundColor).opacity(0.4)
+                        Rectangle().fill(.ultraThinMaterial)
+                    }
+                )
+                .overlay(
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundColor(Color.white.opacity(0.08)),
+                    alignment: .bottom
+                )
+
+            // Timeline Content
+            ScrollView {
+                VStack(spacing: 18) {
+                    // Top 24-Hour Activity Bar
+                    ActivityGridView(cards: appState.cards, selectedDate: appState.selectedDate)
+                        .padding(.top, 4)
+
+                    // Feed Cards or Empty State
+                    if appState.cards.isEmpty {
+                        emptyStateView
+                    } else {
+                        LazyVStack(spacing: 14) {
+                            let reversedCards = Array(appState.cards.reversed())
+                            ForEach(Array(reversedCards.enumerated()), id: \.element.id) { index, card in
+                                ActivityCardView(
+                                    card: card,
+                                    isLast: index == reversedCards.count - 1,
+                                    appState: appState
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 16)
+            }
+        }
+        .onAppear {
+            checkPermissionState()
+        }
+    }
+
+    private var permissionNoticeBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.yellow)
+                .font(.system(size: 16))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Требуется разрешение на запись экрана")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+                Text("Без разрешения невозможно делать снимки и таймлапс. Включите MyDay в Системных настройках.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Button("Открыть настройки") {
+                openScreenRecordingSettings()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.yellow.opacity(0.12))
+        .overlay(Divider(), alignment: .bottom)
+    }
+
+    private var headerBar: some View {
+        HStack(spacing: 12) {
+            // Live Status Capsule
+            HStack(spacing: 8) {
+                // Pulse Dot & LIVE Badge
+                HStack(spacing: 5) {
+                    ZStack {
+                        Circle()
+                            .fill(appState.isRecording && !appState.isPaused ? Color.green.opacity(0.3) : Color.orange.opacity(0.3))
+                            .frame(width: 14, height: 14)
+
+                        Circle()
+                            .fill(appState.isRecording && !appState.isPaused ? Color.green : Color.orange)
+                            .frame(width: 7, height: 7)
+                    }
+
+                    Text(appState.isRecording && !appState.isPaused ? "LIVE" : "PAUSED")
+                        .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                        .foregroundColor(appState.isRecording && !appState.isPaused ? Color.green : Color.orange)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    (appState.isRecording && !appState.isPaused ? Color.green : Color.orange).opacity(0.12)
+                )
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(
+                            (appState.isRecording && !appState.isPaused ? Color.green : Color.orange).opacity(0.25),
+                            lineWidth: 1
+                        )
+                )
+
+                // Current Active Window Pill
+                if appState.isRecording && !appState.isPaused {
+                    if let current = appState.currentWindowContext {
+                        HStack(spacing: 6) {
+                            AppIconView(bundleId: current.bundleId, appName: current.appName, size: 16)
+
+                            Text(current.appName)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundColor(.primary)
+
+                            if !current.windowTitle.isEmpty && current.windowTitle != current.appName {
+                                Text("–")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary.opacity(0.4))
+
+                                Text(current.windowTitle)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 200, alignment: .leading)
+                            }
+
+                            if appState.lastDiffPercent > 0 {
+                                Text("· \(String(format: "%.1f", appState.lastDiffPercent))% diff")
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.secondary.opacity(0.8))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(Color.white.opacity(0.04))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Color.white.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                        )
+                    }
+                } else {
+                    Text("Запись приостановлена")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Action Buttons
+            HStack(spacing: 8) {
+                // Pause / Resume Toggle
+                Button {
+                    appState.togglePause()
+                } label: {
+                    Image(systemName: appState.isPaused ? "play.fill" : "pause.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(appState.isPaused ? .green : .secondary)
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(appState.isPaused ? "Возобновить запись" : "Приостановить запись")
+
+                // Analyze Now ("Собрать блок")
+                Button {
+                    Task {
+                        await appState.triggerBatchAnalysis()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if appState.isAnalyzing {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(width: 12, height: 12)
+                            Text("Анализирую...")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.primary)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.accentColor)
+                            Text("Собрать блок")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(appState.isAnalyzing)
+                .help("Сформировать блок активности прямо сейчас с помощью нейросети")
+
+                // Export Obsidian ("В Obsidian")
+                Button {
+                    appState.copyObsidianDay()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.on.doc.fill")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("В Obsidian")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 13)
+                    .frame(height: 30)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.accentColor, Color.purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
+                    .shadow(color: Color.accentColor.opacity(0.35), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+                .help("Скопировать журнал дня в Markdown буфер обмена для Obsidian")
+            }
+        }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+                .frame(height: 40)
+
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(width: 80, height: 80)
+
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.system(size: 34))
+                    .foregroundColor(.accentColor)
+            }
+
+            VStack(spacing: 6) {
+                Text("Таймлайн активности готов")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Text("Мониторинг экрана и активных приложений уже запущен.\nНажмите кнопку ниже, чтобы мгновенно создать первый блок!")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .frame(maxWidth: 380)
+            }
+
+            Button {
+                Task {
+                    await appState.triggerBatchAnalysis()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Создать первый блок прямо сейчас")
+                }
+                .font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 6)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+
+    private func checkPermissionState() {
+        appState.checkPermissions()
+    }
+
+    private func openScreenRecordingSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
