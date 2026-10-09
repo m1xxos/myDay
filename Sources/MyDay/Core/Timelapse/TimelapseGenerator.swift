@@ -72,7 +72,15 @@ public final class TimelapseGenerator: @unchecked Sendable {
         let frameDuration = CMTime(value: 1, timescale: fps)
         var frameIndex: Int64 = 0
 
-        for url in frameURLs {
+        // If only 1 or 2 frames exist, duplicate them so that video writer can create a valid playable clip
+        var effectiveURLs = frameURLs
+        if effectiveURLs.count == 1 {
+            effectiveURLs = Array(repeating: frameURLs[0], count: 15)
+        } else if effectiveURLs.count == 2 {
+            effectiveURLs = [frameURLs[0], frameURLs[0], frameURLs[1], frameURLs[1]]
+        }
+
+        for url in effectiveURLs {
             autoreleasepool {
                 guard let nsImage = NSImage(contentsOf: url),
                       let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
@@ -83,7 +91,7 @@ public final class TimelapseGenerator: @unchecked Sendable {
                     Thread.sleep(forTimeInterval: 0.005)
                 }
 
-                if let pixelBuffer = newPixelBuffer(from: cgImage, width: videoWidth, height: videoHeight, adaptor: adaptor) {
+                if let pixelBuffer = newPixelBuffer(from: cgImage, width: videoWidth, height: videoHeight) {
                     let presentationTime = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
                     adaptor.append(pixelBuffer, withPresentationTime: presentationTime)
                     frameIndex += 1
@@ -104,17 +112,27 @@ public final class TimelapseGenerator: @unchecked Sendable {
     private func newPixelBuffer(
         from image: CGImage,
         width: Int,
-        height: Int,
-        adaptor: AVAssetWriterInputPixelBufferAdaptor
+        height: Int
     ) -> CVPixelBuffer? {
-        guard let pixelBufferPool = adaptor.pixelBufferPool else { return nil }
-
         var pixelBuffer: CVPixelBuffer?
-        let status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true
+        ]
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32ARGB,
+            attrs as CFDictionary,
+            &pixelBuffer
+        )
         guard status == kCVReturnSuccess, let buffer = pixelBuffer else { return nil }
 
         CVPixelBufferLockBaseAddress(buffer, [])
-        let pixelData = CVPixelBufferGetBaseAddress(buffer)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+
+        guard let pixelData = CVPixelBufferGetBaseAddress(buffer) else { return nil }
 
         let rgbColorSpace = CGColorSpaceCreateDeviceRGB()
         let context = CGContext(
@@ -128,8 +146,6 @@ public final class TimelapseGenerator: @unchecked Sendable {
         )
 
         context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        CVPixelBufferUnlockBaseAddress(buffer, [])
-
         return buffer
     }
 }

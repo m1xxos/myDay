@@ -39,13 +39,56 @@ public final class AppState: ObservableObject {
         checkLMStudio()
         checkPermissions()
         startCaptureLoop()
+        setupPermissionObservers()
         Task { [weak self] in
             await self?.performPeriodicCapture()
         }
     }
 
+    private func setupPermissionObservers() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.checkPermissions()
+            }
+        }
+
+        // Lightweight watcher when permission is missing
+        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if !self.hasScreenPermission {
+                    self.checkPermissions()
+                }
+            }
+        }
+    }
+
     public func checkPermissions() {
-        self.hasScreenPermission = ScreenCaptureManager.shared.checkPermission()
+        let granted = ScreenCaptureManager.shared.checkPermission()
+        if granted != self.hasScreenPermission {
+            self.hasScreenPermission = granted
+            if granted {
+                showToast("Разрешение получено! Запись активна")
+                Task {
+                    await self.performPeriodicCapture()
+                }
+            }
+        }
+    }
+
+    public func relaunchApp() {
+        let bundleURL = Bundle.main.bundleURL
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: config) { _, _ in
+            DispatchQueue.main.async {
+                NSApplication.shared.terminate(nil)
+            }
+        }
     }
 
     // MARK: - Settings Persistence

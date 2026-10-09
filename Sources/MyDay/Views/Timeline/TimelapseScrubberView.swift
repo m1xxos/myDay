@@ -1,6 +1,34 @@
 import Foundation
 import SwiftUI
+import AVFoundation
 import AVKit
+import AppKit
+
+// MARK: - Native AppKit Player View (Crash-free, avoids _AVKit_SwiftUI bug)
+
+public struct NativePlayerView: NSViewRepresentable {
+    public let player: AVPlayer
+
+    public init(player: AVPlayer) {
+        self.player = player
+    }
+
+    public func makeNSView(context: Context) -> AVPlayerView {
+        let playerView = AVPlayerView()
+        playerView.player = player
+        playerView.controlsStyle = .inline
+        playerView.showsFullScreenToggleButton = true
+        playerView.showsSharingServiceButton = true
+        playerView.showsFrameSteppingButtons = true
+        return playerView
+    }
+
+    public func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player != player {
+            nsView.player = player
+        }
+    }
+}
 
 @MainActor
 public final class ScrubberViewModel: ObservableObject {
@@ -8,26 +36,39 @@ public final class ScrubberViewModel: ObservableObject {
     @Published public var currentFrameIndex: Int = 0
     @Published public var isHovering: Bool = false
     @Published public var isGeneratingVideo: Bool = false
-    @Published public var videoPlayerURL: URL? = nil
+    @Published public var player: AVPlayer? = nil
     @Published public var showVideoModal: Bool = false
 
     public init() {}
 
     public func loadFrames(for card: TimelineCard) {
         let loaded = TimelapseStorage.shared.getFrames(between: card.startTime, and: card.endTime)
-        self.frames = loaded
         if !loaded.isEmpty {
+            self.frames = loaded
             self.currentFrameIndex = loaded.count / 2
+        } else if let keyframe = card.keyframePath, FileManager.default.fileExists(atPath: keyframe) {
+            self.frames = [URL(fileURLWithPath: keyframe)]
+            self.currentFrameIndex = 0
+        } else {
+            self.frames = []
         }
     }
 
     public func playTimelapseVideo(for card: TimelineCard) {
+        // If pre-generated video exists on disk, play it immediately
         if let existing = card.timelapseVideoPath, FileManager.default.fileExists(atPath: existing) {
-            self.videoPlayerURL = URL(fileURLWithPath: existing)
+            let url = URL(fileURLWithPath: existing)
+            let p = AVPlayer(url: url)
+            self.player = p
             self.showVideoModal = true
+            p.play()
             return
         }
 
+        // Ensure we have frames (or fallback to keyframe)
+        if frames.isEmpty {
+            loadFrames(for: card)
+        }
         guard !frames.isEmpty else { return }
 
         isGeneratingVideo = true
@@ -37,13 +78,26 @@ public final class ScrubberViewModel: ObservableObject {
 
             do {
                 let videoURL = try await TimelapseGenerator.shared.generateTimelapseVideo(frameURLs: frames, outputURL: outURL)
-                self.videoPlayerURL = videoURL
+                // Cache generated video path
+                var updated = card
+                updated.timelapseVideoPath = videoURL.path
+                DatabaseManager.shared.saveCard(updated)
+
+                let p = AVPlayer(url: videoURL)
+                self.player = p
                 self.showVideoModal = true
+                p.play()
             } catch {
                 print("[TimelapseScrubberView] Video compilation error: \(error)")
             }
             self.isGeneratingVideo = false
         }
+    }
+
+    public func closeVideoModal() {
+        self.player?.pause()
+        self.player = nil
+        self.showVideoModal = false
     }
 }
 
@@ -114,11 +168,18 @@ public struct TimelapseScrubberView: View {
 
                     // Play Video Button
                     if vm.isGeneratingVideo {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 24, height: 24)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
+                        HStack(spacing: 5) {
+                            ProgressView()
+                                .scaleEffect(0.55)
+                                .frame(width: 14, height: 14)
+                            Text("Сборка...")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.6))
+                        .clipShape(Capsule())
                     } else {
                         Button {
                             vm.playTimelapseVideo(for: card)
@@ -135,7 +196,7 @@ public struct TimelapseScrubberView: View {
                             .background(
                                 Capsule()
                                     .fill(LinearGradient(
-                                        colors: [Color.accentColor, Color.accentColor.opacity(0.8)],
+                                        colors: [Color.accentColor, Color.purple],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ))
@@ -175,7 +236,7 @@ public struct TimelapseScrubberView: View {
                         Capsule()
                             .fill(
                                 LinearGradient(
-                                    colors: [Color.accentColor.opacity(0.7), Color.accentColor],
+                                    colors: [Color.accentColor.opacity(0.7), Color.purple],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
@@ -192,30 +253,37 @@ public struct TimelapseScrubberView: View {
             vm.loadFrames(for: card)
         }
         .sheet(isPresented: $vm.showVideoModal) {
-            if let videoURL = vm.videoPlayerURL {
+            if let player = vm.player {
                 VStack(spacing: 0) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(card.title)
-                                .font(.headline)
-                            Text("Ускоренный таймлапс сессии")
-                                .font(.caption)
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.primary)
+                            Text("Таймлапс сессии (\(card.durationFormatted))")
+                                .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
-                        Button("Закрыть") {
-                            vm.showVideoModal = false
+                        Button {
+                            vm.closeVideoModal()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(.secondary)
                         }
+                        .buttonStyle(.plain)
                         .keyboardShortcut(.cancelAction)
                     }
-                    .padding(16)
+                    .padding(14)
                     .background(Color(NSColor.windowBackgroundColor))
                     .overlay(Divider(), alignment: .bottom)
 
-                    VideoPlayer(player: AVPlayer(url: videoURL))
-                        .frame(width: 720, height: 450)
+                    NativePlayerView(player: player)
+                        .frame(width: 760, height: 480)
                 }
-                .frame(width: 720, height: 506)
+                .frame(width: 760, height: 536)
+                .background(Color.black)
             }
         }
     }

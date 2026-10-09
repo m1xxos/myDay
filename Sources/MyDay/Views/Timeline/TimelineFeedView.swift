@@ -83,22 +83,42 @@ public struct TimelineFeedView: View {
 
             Spacer()
 
-            Button {
-                openScreenRecordingSettings()
-            } label: {
-                Text("Открыть настройки")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.orange)
+            HStack(spacing: 6) {
+                Button {
+                    openScreenRecordingSettings()
+                } label: {
+                    Text("Настройки")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.orange.opacity(0.18))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    appState.relaunchApp()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Перезапустить")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color.orange.opacity(0.18))
+                    .background(Color.orange)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.orange.opacity(0.35), lineWidth: 1)
-                    )
+                }
+                .buttonStyle(.plain)
+                .help("Перезапустить приложение для применения системных разрешений")
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 9)

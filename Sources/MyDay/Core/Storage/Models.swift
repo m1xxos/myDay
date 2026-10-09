@@ -110,6 +110,15 @@ public struct TimelineCard: Codable, Identifiable, Sendable {
         max(1, endTime.timeIntervalSince(startTime))
     }
 
+    public var durationFormatted: String {
+        let m = max(1, Int(duration) / 60)
+        if m >= 60 {
+            return "\(m / 60)ч \(m % 60)м"
+        } else {
+            return "\(m) мин"
+        }
+    }
+
     public var primaryApp: String {
         appUsages.max(by: { $0.durationSeconds < $1.durationSeconds })?.appName ?? "Mac"
     }

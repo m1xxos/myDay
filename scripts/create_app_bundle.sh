@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# Close any running instance to release file locks & prevent macOS TCC permission caching issues
+if pgrep -x "MyDay" > /dev/null 2>&1; then
+    echo "🛑 Terminating currently running MyDay instance to avoid code signature invalidation..."
+    pkill -x "MyDay" || true
+    sleep 0.5
+fi
+
 echo "🔨 Building release binary for MyDay..."
 swift build -c release
 
@@ -24,6 +31,14 @@ mkdir -p "$RESOURCES_DIR"
 cp "$BIN_PATH" "$MACOS_DIR/MyDay"
 chmod +x "$MACOS_DIR/MyDay"
 
+# Ensure icon exists
+if [ ! -f "Resources/AppIcon.icns" ]; then
+    echo "🎨 Generating AppIcon.icns..."
+    swift scripts/generate_icon.swift
+fi
+
+cp "Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+
 cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -41,6 +56,8 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
@@ -53,5 +70,11 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 </plist>
 EOF
 
-echo "✅ Successfully updated $APP_DIR!"
+echo "🔐 Codesigning $APP_DIR with stable bundle identifier com.m1xxos.myday..."
+codesign --force --deep --sign - --identifier "com.m1xxos.myday" "$APP_DIR"
+
+# Touch bundle to notify Finder / LaunchServices of icon update
+touch "$APP_DIR"
+
+echo "✅ Successfully created and signed $APP_DIR with custom AppIcon!"
 echo "🚀 You can now launch it via: open MyDay.app"
