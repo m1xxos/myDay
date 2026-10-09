@@ -11,15 +11,11 @@ public struct TimelineFeedView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Screen Recording Permission Banner (if missing)
-            if !appState.hasScreenPermission {
-                permissionNoticeBanner
-            }
-
-            // Top Header Bar
+            // Top Header Bar - perfectly aligned with Sidebar brand header
             headerBar
                 .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.top, 24)
+                .padding(.bottom, 12)
                 .background(
                     ZStack {
                         Color(NSColor.windowBackgroundColor).opacity(0.4)
@@ -32,6 +28,11 @@ public struct TimelineFeedView: View {
                         .foregroundColor(Color.white.opacity(0.08)),
                     alignment: .bottom
                 )
+
+            // Screen Recording Permission Banner (if missing, displayed cleanly under headerBar)
+            if !appState.hasScreenPermission {
+                permissionNoticeBanner
+            }
 
             // Timeline Content
             ScrollView {
@@ -68,8 +69,8 @@ public struct TimelineFeedView: View {
     private var permissionNoticeBanner: some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.yellow)
-                .font(.system(size: 16))
+                .foregroundColor(.orange)
+                .font(.system(size: 15))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Требуется разрешение на запись экрана")
@@ -82,16 +83,32 @@ public struct TimelineFeedView: View {
 
             Spacer()
 
-            Button("Открыть настройки") {
+            Button {
                 openScreenRecordingSettings()
+            } label: {
+                Text("Открыть настройки")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+                    )
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color.yellow.opacity(0.12))
-        .overlay(Divider(), alignment: .bottom)
+        .padding(.vertical, 9)
+        .background(Color.orange.opacity(0.08))
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color.orange.opacity(0.2)),
+            alignment: .bottom
+        )
     }
 
     private var headerBar: some View {

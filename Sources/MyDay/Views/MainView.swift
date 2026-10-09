@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 public struct MainView: View {
     @ObservedObject var appState: AppState
@@ -9,9 +10,18 @@ public struct MainView: View {
     }
 
     public var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
+            // Fixed Left Sidebar (260px) - completely immune to breaking or accidental resizing
             SidebarView(appState: appState)
-        } detail: {
+                .frame(width: 260)
+
+            // Subtle vertical 1px divider spanning full window height
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(width: 1)
+                .ignoresSafeArea()
+
+            // Main Detail Timeline Feed
             ZStack(alignment: .bottom) {
                 TimelineFeedView(appState: appState)
 
@@ -40,7 +50,14 @@ public struct MainView: View {
                     .animation(.spring(response: 0.35, dampingFraction: 0.7), value: appState.toastMessage)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(WindowAccessor { window in
+            window.title = "MyDay — Автоматический журнал дня"
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = true
+        })
         .sheet(isPresented: $appState.isShowingSettings) {
             SettingsView(appState: appState)
         }
@@ -52,6 +69,27 @@ public struct MainView: View {
     private func checkPermissions() {
         if !ScreenCaptureManager.shared.checkPermission() {
             ScreenCaptureManager.shared.requestPermission()
+        }
+    }
+}
+
+// AppKit Window Accessor to style the window titlebar & enable background drag
+struct WindowAccessor: NSViewRepresentable {
+    let onWindow: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                onWindow(window)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let window = nsView.window {
+            onWindow(window)
         }
     }
 }

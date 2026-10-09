@@ -13,12 +13,11 @@ struct MyDayApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("MyDay — Автоматический журнал дня", id: "mainWindow") {
+        WindowGroup(id: "mainWindow") {
             MainView(appState: appState)
                 .frame(minWidth: 840, minHeight: 540)
         }
-        .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified)
+        .windowStyle(.hiddenTitleBar)
 
         MenuBarExtra {
             MenuBarView(appState: appState) {

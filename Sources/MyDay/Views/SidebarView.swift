@@ -38,6 +38,10 @@ public struct SidebarView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            // Space for macOS traffic lights
+            Spacer()
+                .frame(height: 18)
+
             // Header: Brand & AI Pill
             HStack(spacing: 9) {
                 ZStack {
@@ -285,19 +289,15 @@ public struct SidebarView: View {
             }
             .padding(.bottom, 2)
         }
-        .padding(16)
-        .frame(minWidth: 250, maxWidth: 290)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+        .frame(width: 260)
+        .frame(maxHeight: .infinity)
         .background(
             ZStack {
                 Color(NSColor.windowBackgroundColor).opacity(0.65)
                 Rectangle().fill(.ultraThinMaterial)
             }
-        )
-        .overlay(
-            Rectangle()
-                .frame(width: 1)
-                .foregroundColor(Color.white.opacity(0.08)),
-            alignment: .trailing
         )
     }
 }
