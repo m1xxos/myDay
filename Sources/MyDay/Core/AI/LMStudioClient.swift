@@ -114,6 +114,7 @@ public final class LMStudioClient: @unchecked Sendable {
             var aiResponse = try JSONDecoder().decode(AIActivityResponse.self, from: jsonData)
             if aiResponse.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 aiResponse = AIActivityResponse(
+                    is_continuation: aiResponse.is_continuation,
                     title: aiResponse.title,
                     summary: "Работа над задачами: \(aiResponse.title)",
                     category: aiResponse.category,
@@ -155,6 +156,7 @@ public final class LMStudioClient: @unchecked Sendable {
     private func parseFallbackJSON(from text: String) throws -> AIActivityResponse {
         // Fallback heuristic if local model missed a quote or tag array
         if let dict = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] {
+            let isCont = dict["is_continuation"] as? Bool ?? false
             let title = dict["title"] as? String ?? "Activity"
             var summary = (dict["summary"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if summary.isEmpty {
@@ -162,7 +164,7 @@ public final class LMStudioClient: @unchecked Sendable {
             }
             let cat = dict["category"] as? String ?? "Other"
             let tags = dict["tags"] as? [String] ?? []
-            return AIActivityResponse(title: title, summary: summary, category: cat, tags: tags)
+            return AIActivityResponse(is_continuation: isCont, title: title, summary: summary, category: cat, tags: tags)
         }
 
         throw NSError(domain: "LMStudioClient", code: -3, userInfo: [NSLocalizedDescriptionKey: "Could not parse JSON: \(text)"])

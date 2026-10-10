@@ -270,6 +270,30 @@ public struct TimelineFeedView: View {
                 .buttonStyle(.plain)
                 .disabled(appState.isAnalyzing)
                 .help("Сформировать блок активности прямо сейчас с помощью нейросети")
+                
+                // Day Summary
+                Button {
+                    appState.isShowingDaySummary = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "film")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.accentColor)
+                        Text("Итоги дня")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Сгенерировать итоги и таймлапс всего дня")
 
                 // Export Obsidian ("В Obsidian")
                 Button {

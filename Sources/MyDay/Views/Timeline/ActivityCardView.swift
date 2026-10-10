@@ -167,7 +167,7 @@ public struct ActivityCardView: View {
                 }
 
                 // Cinematic Timelapse Scrubber & Preview
-                TimelapseScrubberView(card: card)
+                TimelapseScrubberView(card: card, vm: appState.scrubberVM(for: card))
 
                 // Tags Pill Row
                 if !card.tags.isEmpty {

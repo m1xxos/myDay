@@ -33,15 +33,24 @@ public struct NativePlayerView: NSViewRepresentable {
 @MainActor
 public final class ScrubberViewModel: ObservableObject {
     @Published public var frames: [URL] = []
-    @Published public var currentFrameIndex: Int = 0
+    @Published public var currentFrameIndex: Int = 0 {
+        didSet {
+            updateCurrentImage()
+        }
+    }
     @Published public var isHovering: Bool = false
     @Published public var isGeneratingVideo: Bool = false
     @Published public var player: AVPlayer? = nil
     @Published public var showVideoModal: Bool = false
+    @Published public var currentImage: NSImage? = nil
+
+    private var imageCache: [Int: NSImage] = [:]
 
     public init() {}
 
     public func loadFrames(for card: TimelineCard) {
+        guard frames.isEmpty else { return } // Prevent reloading if already loaded
+        
         let loaded = TimelapseStorage.shared.getFrames(between: card.startTime, and: card.endTime)
         if !loaded.isEmpty {
             self.frames = loaded
@@ -51,6 +60,30 @@ public final class ScrubberViewModel: ObservableObject {
             self.currentFrameIndex = 0
         } else {
             self.frames = []
+        }
+        updateCurrentImage()
+    }
+    
+    private func updateCurrentImage() {
+        guard frames.indices.contains(currentFrameIndex) else { return }
+        let idx = currentFrameIndex
+        
+        if let cached = imageCache[idx] {
+            self.currentImage = cached
+            return
+        }
+        
+        let url = frames[idx]
+        Task.detached(priority: .userInitiated) {
+            if let image = NSImage(contentsOf: url) {
+                // Downsample slightly for scrubber UI if needed, but simple load is often enough if async
+                await MainActor.run {
+                    self.imageCache[idx] = image
+                    if self.currentFrameIndex == idx {
+                        self.currentImage = image
+                    }
+                }
+            }
         }
     }
 
@@ -115,16 +148,12 @@ public struct TimelapseScrubberView: View {
             ZStack(alignment: .bottom) {
                 // Background Frame Display
                 ZStack {
-                    if !vm.frames.isEmpty && vm.currentFrameIndex < vm.frames.count {
-                        if let nsImage = NSImage(contentsOf: vm.frames[vm.currentFrameIndex]) {
-                            Image(nsImage: nsImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(height: 160)
-                                .clipped()
-                        } else {
-                            placeholderView
-                        }
+                    if let nsImage = vm.currentImage {
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 160)
+                            .clipped()
                     } else if let keyframe = card.keyframePath, let nsImage = NSImage(contentsOfFile: keyframe) {
                         Image(nsImage: nsImage)
                             .resizable()
@@ -210,20 +239,25 @@ public struct TimelapseScrubberView: View {
             }
             .contentShape(Rectangle())
             // Mouse hover scrubber
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
-                    vm.isHovering = true
-                    guard !vm.frames.isEmpty else { return }
-                    let fraction = max(0.0, min(1.0, location.x / 300.0))
-                    let targetIndex = Int(fraction * Double(vm.frames.count - 1))
-                    if targetIndex != vm.currentFrameIndex {
-                        vm.currentFrameIndex = targetIndex
-                    }
-                case .ended:
-                    vm.isHovering = false
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                vm.isHovering = true
+                                guard !vm.frames.isEmpty, geo.size.width > 0 else { return }
+                                let fraction = max(0.0, min(1.0, location.x / geo.size.width))
+                                let targetIndex = Int(fraction * Double(vm.frames.count - 1))
+                                if targetIndex != vm.currentFrameIndex {
+                                    vm.currentFrameIndex = targetIndex
+                                }
+                            case .ended:
+                                vm.isHovering = false
+                            }
+                        }
                 }
-            }
+            )
 
             // Sleek Glowing Scrubber Bar
             if vm.frames.count > 1 {

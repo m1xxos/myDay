@@ -14,6 +14,7 @@ public struct MainView: View {
             // Fixed Left Sidebar (260px) - completely immune to breaking or accidental resizing
             SidebarView(appState: appState)
                 .frame(width: 260)
+                .fixedSize(horizontal: true, vertical: false)
 
             // Subtle vertical 1px divider spanning full window height
             Rectangle()
@@ -60,6 +61,9 @@ public struct MainView: View {
         })
         .sheet(isPresented: $appState.isShowingSettings) {
             SettingsView(appState: appState)
+        }
+        .sheet(isPresented: $appState.isShowingDaySummary) {
+            DaySummaryView(appState: appState)
         }
         .onAppear {
             checkPermissions()

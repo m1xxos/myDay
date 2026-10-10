@@ -92,6 +92,15 @@ public final class BatchAggregator: @unchecked Sendable {
         var cardCategory = ActivityCategory.match(from: primaryApp)
         var cardTags: [String] = [primaryApp.lowercased()]
         var isAnalyzed = false
+        var isContinuation = false
+
+        let lastCard = DatabaseManager.shared.fetchAllCards(limit: 1).first
+        
+        // We only allow stitching if the last card ended recently (e.g. less than 20 minutes ago)
+        var previousContext: (title: String, summary: String)? = nil
+        if let last = lastCard, currentStart.timeIntervalSince(last.endTime) < 20 * 60 {
+            previousContext = (title: last.title, summary: last.summary)
+        }
 
         // Try AI analysis via LM Studio if enabled
         if settings.autoAnalyze {
@@ -99,7 +108,8 @@ public final class BatchAggregator: @unchecked Sendable {
                 timeRangeString: rangeStr,
                 appUsages: appSlices,
                 ocrKeywords: ocrKeywords,
-                keyTextLines: keyTextLines
+                keyTextLines: keyTextLines,
+                previousContext: previousContext
             )
 
             do {
@@ -115,29 +125,77 @@ public final class BatchAggregator: @unchecked Sendable {
                 cardSummary = aiResponse.summary
                 cardCategory = ActivityCategory.match(from: aiResponse.category)
                 cardTags = aiResponse.tags
+                isContinuation = aiResponse.is_continuation
                 isAnalyzed = true
             } catch {
                 print("[BatchAggregator] LM Studio call skipped/failed: \(error.localizedDescription). Falling back to heuristic card.")
+                
+                // Heuristic stitching fallback
+                if let last = lastCard, last.category == cardCategory, currentStart.timeIntervalSince(last.endTime) < 5 * 60 {
+                    isContinuation = true
+                }
+            }
+        } else {
+             // Heuristic stitching fallback if autoAnalyze is off
+            if let last = lastCard, last.category == cardCategory, currentStart.timeIntervalSince(last.endTime) < 5 * 60 {
+                isContinuation = true
             }
         }
 
-        let card = TimelineCard(
-            startTime: currentStart,
-            endTime: currentEnd,
-            title: cardTitle,
-            summary: cardSummary,
-            category: cardCategory,
-            tags: cardTags,
-            appUsages: appSlices,
-            keyframePath: keyframe?.filePath,
-            timelapseVideoPath: nil,
-            frameCount: currentFrames.count,
-            isAIAnalyzed: isAnalyzed,
-            ocrKeywords: ocrKeywords
-        )
+        if isContinuation, var mergedCard = lastCard {
+            // Update mergedCard with combined data
+            mergedCard.endTime = currentEnd
+            mergedCard.frameCount += currentFrames.count
+            mergedCard.title = isAnalyzed ? cardTitle : mergedCard.title
+            mergedCard.summary = isAnalyzed ? cardSummary : mergedCard.summary
+            
+            // Merge app usages
+            var combinedUsages = mergedCard.appUsages
+            for newUsage in appSlices {
+                if let index = combinedUsages.firstIndex(where: { $0.appName == newUsage.appName }) {
+                    combinedUsages[index].durationSeconds += newUsage.durationSeconds
+                    for title in newUsage.windowTitles {
+                        if !combinedUsages[index].windowTitles.contains(title) {
+                            combinedUsages[index].windowTitles.append(title)
+                        }
+                    }
+                } else {
+                    combinedUsages.append(newUsage)
+                }
+            }
+            mergedCard.appUsages = combinedUsages
+            
+            // Merge tags
+            for tag in cardTags {
+                if !mergedCard.tags.contains(tag) {
+                    mergedCard.tags.append(tag)
+                }
+            }
+            
+            mergedCard.category = cardCategory
+            mergedCard.keyframePath = keyframe?.filePath ?? mergedCard.keyframePath
+            
+            DatabaseManager.shared.saveCard(mergedCard)
+            return mergedCard
+        } else {
+            let card = TimelineCard(
+                startTime: currentStart,
+                endTime: currentEnd,
+                title: cardTitle,
+                summary: cardSummary,
+                category: cardCategory,
+                tags: cardTags,
+                appUsages: appSlices,
+                keyframePath: keyframe?.filePath,
+                timelapseVideoPath: nil,
+                frameCount: currentFrames.count,
+                isAIAnalyzed: isAnalyzed,
+                ocrKeywords: ocrKeywords
+            )
 
-        DatabaseManager.shared.saveCard(card)
-        return card
+            DatabaseManager.shared.saveCard(card)
+            return card
+        }
     }
 
     private func snapshotAndReset() -> (Date, Date, [String: AppUsageSlice], [RecordedFrame]) {

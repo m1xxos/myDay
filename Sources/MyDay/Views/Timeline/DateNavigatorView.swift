@@ -201,8 +201,26 @@ public struct DateNavigatorView: View {
                 )
             }
             .buttonStyle(.plain)
-            .popover(isPresented: $vm.isPopoverOpen, arrowEdge: .bottom) {
-                datePopoverContent
+            .overlay(alignment: .top) {
+                if vm.isPopoverOpen {
+                    datePopoverContent
+                        .padding(14)
+                        .background(
+                            ZStack {
+                                Color(NSColor.windowBackgroundColor).opacity(0.95)
+                                Rectangle().fill(.ultraThinMaterial)
+                            }
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.4), radius: 15, x: 0, y: 8)
+                        .offset(y: 34)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                        .zIndex(100)
+                }
             }
 
             // Next Day Button
@@ -328,9 +346,7 @@ public struct DateNavigatorView: View {
                 }
             }
         }
-        .padding(14)
         .frame(width: 270)
-        .background(.ultraThickMaterial)
     }
 
     private func quickChip(title: String, action: @escaping () -> Void) -> some View {

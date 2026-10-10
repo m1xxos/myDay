@@ -1,12 +1,14 @@
 import Foundation
 
 public struct AIActivityResponse: Codable, Sendable {
+    public let is_continuation: Bool
     public let title: String
     public let summary: String
     public let category: String
     public let tags: [String]
 
-    public init(title: String, summary: String, category: String, tags: [String]) {
+    public init(is_continuation: Bool, title: String, summary: String, category: String, tags: [String]) {
+        self.is_continuation = is_continuation
         self.title = title
         self.summary = summary
         self.category = category
@@ -25,9 +27,16 @@ public enum PromptTemplates {
         timeRangeString: String,
         appUsages: [AppUsageSlice],
         ocrKeywords: [String],
-        keyTextLines: [String]
+        keyTextLines: [String],
+        previousContext: (title: String, summary: String)? = nil
     ) -> String {
         var text = "Time Period: \(timeRangeString)\n\n"
+
+        if let prev = previousContext {
+            text += "PREVIOUS ADJACENT ACTIVITY:\n"
+            text += "Title: \(prev.title)\nSummary: \(prev.summary)\n\n"
+            text += "NOTE: If the current activity is a direct continuation of this previous activity, set 'is_continuation' to true, keep the SAME OR SIMILAR title, and update the summary to reflect the combined progress.\n\n"
+        }
 
         text += "Applications used:\n"
         for usage in appUsages.sorted(by: { $0.durationSeconds > $1.durationSeconds }) {
@@ -50,6 +59,7 @@ public enum PromptTemplates {
 
         Output schema (strictly valid JSON):
         {
+          "is_continuation": false, // Set to true ONLY if this strongly relates to the PREVIOUS ADJACENT ACTIVITY provided above.
           "title": "Concise descriptive title of what was done (max 6-8 words, in Russian if user works in Russian or English if in English)",
           "summary": "1-2 brief bullet points or sentences describing the work accomplished (REQUIRED, do not leave empty)",
           "category": "Development | Writing | Research | Communication | Design | Entertainment | Utility | Other",
@@ -57,6 +67,31 @@ public enum PromptTemplates {
         }
         """
 
+        return text
+    }
+
+    public static func buildDaySummaryPrompt(cards: [TimelineCard]) -> String {
+        var text = "You are a helpful assistant writing an end-of-day summary. The user worked on the following activities today:\n\n"
+        for (i, card) in cards.enumerated() {
+            text += "\(i+1). [\(card.category.displayName)] \(card.title)\n"
+            if !card.summary.isEmpty {
+                text += "   - \(card.summary)\n"
+            }
+        }
+        text += """
+
+        Write a cohesive, structured 2-3 paragraph markdown summary of how the day went, highlighting major focuses, completed tasks, and general themes.
+        Keep it concise, friendly, and in the language the user mostly used in the titles (likely Russian).
+
+        Output schema (strictly valid JSON):
+        {
+          "is_continuation": false,
+          "title": "Итоги дня",
+          "summary": "Your beautiful markdown text summary goes here. Use \\n for newlines.",
+          "category": "Other",
+          "tags": ["summary"]
+        }
+        """
         return text
     }
 }

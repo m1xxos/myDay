@@ -19,7 +19,20 @@ public final class AppState: ObservableObject {
     @Published public var toastMessage: String?
     @Published public var isLMStudioConnected: Bool = false
     @Published public var isShowingSettings: Bool = false
+    @Published public var isShowingDaySummary: Bool = false
     @Published public var hasScreenPermission: Bool = true
+    
+    // Scrubber VM Cache
+    public var scrubberVMs: [UUID: ScrubberViewModel] = [:]
+    
+    public func scrubberVM(for card: TimelineCard) -> ScrubberViewModel {
+        if let vm = scrubberVMs[card.id] {
+            return vm
+        }
+        let vm = ScrubberViewModel()
+        scrubberVMs[card.id] = vm
+        return vm
+    }
 
     // MARK: - Private Services
     private var captureTimer: Timer?

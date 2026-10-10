@@ -10,6 +10,16 @@ struct MyDayApp: App {
     init() {
         // Ensure regular macOS app behavior (Dock icon, menu bar)
         NSApplication.shared.setActivationPolicy(.regular)
+        
+        // Inject custom AppIcon dynamically since `swift run` bypasses standard app bundling
+        if let iconPath = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"), let img = NSImage(contentsOf: iconPath) {
+            NSApplication.shared.applicationIconImage = img
+        } else {
+            let projectRootIconPath = URL(fileURLWithPath: "Resources/AppIcon.icns")
+            if let img = NSImage(contentsOf: projectRootIconPath) {
+                NSApplication.shared.applicationIconImage = img
+            }
+        }
     }
 
     var body: some Scene {
