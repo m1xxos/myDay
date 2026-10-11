@@ -123,6 +123,39 @@ public struct TimelineCard: Codable, Identifiable, Sendable {
         appUsages.max(by: { $0.durationSeconds < $1.durationSeconds })?.appName ?? "Mac"
     }
 
+    public var cleanedTags: [String] {
+        tags.compactMap { tag -> String? in
+            let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "#", with: "")
+            guard trimmed.count >= 2 && trimmed.count <= 18 else { return nil }
+            guard !trimmed.contains("/") && !trimmed.contains("\\") else { return nil }
+            return trimmed
+        }
+    }
+
+    public static func cleanWindowTitle(_ raw: String, appName: String) -> String {
+        var clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean.lowercased() != appName.lowercased() else { return "" }
+        
+        // Strip email addresses
+        let emailPattern = #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"#
+        clean = clean.replacingOccurrences(of: emailPattern, with: "", options: .regularExpression)
+        
+        // Strip noisy browser suffixes
+        let suffixes = [
+            " - Google Chrome", " - Zen Browser", " - Safari", " - Arc",
+            " - Firefox", " - Brave", " - Opera", " | Zen", " — Mozilla Firefox"
+        ]
+        for s in suffixes {
+            if clean.hasSuffix(s) {
+                clean = String(clean.dropLast(s.count))
+            }
+        }
+        
+        clean = clean.trimmingCharacters(in: CharacterSet(charactersIn: " -|·\n\t,"))
+        return clean
+    }
+
     public init(
         id: UUID = UUID(),
         startTime: Date,

@@ -64,9 +64,6 @@ public struct TimelineFeedView: View {
         .onAppear {
             checkPermissionState()
         }
-        .sheet(item: $appState.selectedDetailCard) { card in
-            ActivityDetailModalView(card: card, appState: appState)
-        }
     }
 
     private var permissionNoticeBanner: some View {
@@ -347,6 +344,26 @@ public struct TimelineFeedView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Скопировать журнал дня в Markdown буфер обмена для Obsidian")
+
+                // Inspector Toggle Button
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.isInspectorVisible.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(appState.isInspectorVisible ? .primary : .secondary)
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(appState.isInspectorVisible ? 0.09 : 0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(appState.isInspectorVisible ? "Скрыть инспектор деталей" : "Показать инспектор деталей")
             }
         }
     }

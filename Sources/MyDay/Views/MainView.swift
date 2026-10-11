@@ -51,8 +51,20 @@ public struct MainView: View {
                     .animation(.spring(response: 0.35, dampingFraction: 0.7), value: appState.toastMessage)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+
+            // Right Activity Inspector Panel (Dayflow Style)
+            if appState.isInspectorVisible {
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 1)
+                    .ignoresSafeArea()
+
+                ActivityInspectorView(appState: appState)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.22), value: appState.isInspectorVisible)
         .background(WindowAccessor { window in
             window.title = "MyDay — Автоматический журнал дня"
             window.titlebarAppearsTransparent = true
@@ -64,6 +76,11 @@ public struct MainView: View {
         }
         .sheet(isPresented: $appState.isShowingDaySummary) {
             DaySummaryView(appState: appState)
+        }
+        .sheet(isPresented: $appState.isShowingCinemaModal) {
+            if let card = appState.cinemaCard ?? appState.selectedCard {
+                TimelapseCinemaModalView(card: card, appState: appState)
+            }
         }
         .onAppear {
             checkPermissions()

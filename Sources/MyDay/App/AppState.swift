@@ -20,7 +20,10 @@ public final class AppState: ObservableObject {
     @Published public var isLMStudioConnected: Bool = false
     @Published public var isShowingSettings: Bool = false
     @Published public var isShowingDaySummary: Bool = false
-    @Published public var selectedDetailCard: TimelineCard? = nil
+    @Published public var selectedCard: TimelineCard? = nil
+    @Published public var isInspectorVisible: Bool = true
+    @Published public var isShowingCinemaModal: Bool = false
+    @Published public var cinemaCard: TimelineCard? = nil
     @Published public var hasScreenPermission: Bool = true
     
     // Scrubber VM Cache
@@ -190,10 +193,26 @@ public final class AppState: ObservableObject {
     public func loadCards(for date: Date) {
         self.selectedDate = date
         self.cards = db.fetchCards(for: date)
+        if selectedCard == nil || !cards.contains(where: { $0.id == selectedCard?.id }) {
+            self.selectedCard = cards.last ?? cards.first
+        }
+    }
+
+    public func selectCard(_ card: TimelineCard) {
+        self.selectedCard = card
+        self.isInspectorVisible = true
+    }
+
+    public func openCinemaPlayer(for card: TimelineCard) {
+        self.cinemaCard = card
+        self.isShowingCinemaModal = true
     }
 
     public func deleteCard(_ card: TimelineCard) {
         db.deleteCard(id: card.id)
+        if selectedCard?.id == card.id {
+            selectedCard = nil
+        }
         loadCards(for: selectedDate)
     }
 

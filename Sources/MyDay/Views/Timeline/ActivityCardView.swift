@@ -150,14 +150,16 @@ public struct ActivityCardView: View {
                 // Title & Narrative
                 VStack(alignment: .leading, spacing: 4) {
                     Text(card.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.primary)
 
-                    if !card.summary.isEmpty {
-                        Text(card.summary)
-                            .font(.system(size: 12))
+                    let cleanSummary = sanitizeSummary(card.summary)
+                    if !cleanSummary.isEmpty {
+                        Text(cleanSummary)
+                            .font(.system(size: 12.5))
                             .foregroundColor(.secondary)
                             .lineSpacing(2.5)
+                            .lineLimit(3)
                     }
                 }
 
@@ -166,103 +168,114 @@ public struct ActivityCardView: View {
                     appUsagesWithIconsView
                 }
 
-                // MARK: - Dayflow-Style Media Strip (Click to open Inspector Modal)
+                // MARK: - Dayflow-Style Media Strip
                 if card.frameCount > 0 || card.keyframePath != nil {
                     Button {
-                        appState.selectedDetailCard = card
+                        appState.selectCard(card)
+                        appState.openCinemaPlayer(for: card)
                     } label: {
-                        HStack(spacing: 10) {
-                            // Keyframe thumbnail preview
+                        HStack(spacing: 8) {
                             if let keyframe = card.keyframePath, let img = NSImage(contentsOfFile: keyframe) {
                                 Image(nsImage: img)
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
-                                    .frame(width: 52, height: 34)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .frame(width: 44, height: 28)
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                                        RoundedRectangle(cornerRadius: 5)
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                                     )
                             } else {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.primary.opacity(0.06))
-                                    .frame(width: 52, height: 34)
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(Color.primary.opacity(0.05))
+                                    .frame(width: 44, height: 28)
                                     .overlay(
                                         Image(systemName: "photo")
-                                            .font(.system(size: 14))
+                                            .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                     )
                             }
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(Color.accentColor)
-
-                                    Text("\(max(1, card.frameCount)) скриншотов · Таймлапс")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(.primary)
-                                }
-
-                                Text("Нажмите для просмотра и покадровой перемотки")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                            }
+                            Text("\(max(1, card.frameCount)) кадров · Таймлапс")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.primary)
 
                             Spacer()
 
                             Image(systemName: "play.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(Color.accentColor)
-                                .padding(.trailing, 4)
+                                .font(.system(size: 15))
+                                .foregroundColor(categoryColor)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Color.primary.opacity(0.035))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Color.primary.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
                         )
                     }
                     .buttonStyle(.plain)
-                    .help("Открыть скриншоты и таймлапс этой активности")
+                    .help("Открыть плеер таймлапса для этой активности")
                 }
 
                 // Tags Pill Row
-                if !card.tags.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(card.tags.prefix(5), id: \.self) { tag in
+                let tags = card.cleanedTags
+                if !tags.isEmpty {
+                    HStack(spacing: 5) {
+                        ForEach(tags.prefix(4), id: \.self) { tag in
                             Text("#\(tag)")
                                 .font(.system(size: 10, weight: .medium))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2.5)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
                                 .background(Color.primary.opacity(0.05))
                                 .foregroundColor(.secondary)
-                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
                     }
                 }
             }
             .padding(14)
             .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.85))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.12), Color.white.opacity(0.03)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
+                RoundedRectangle(cornerRadius: 13)
+                    .fill(
+                        appState.selectedCard?.id == card.id
+                            ? categoryColor.opacity(0.07)
+                            : Color(NSColor.controlBackgroundColor).opacity(0.85)
                     )
             )
-            .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 3)
+            .overlay(
+                RoundedRectangle(cornerRadius: 13)
+                    .stroke(
+                        appState.selectedCard?.id == card.id
+                            ? categoryColor.opacity(0.5)
+                            : Color.white.opacity(0.08),
+                        lineWidth: appState.selectedCard?.id == card.id ? 1.5 : 1
+                    )
+            )
+            .shadow(
+                color: appState.selectedCard?.id == card.id
+                    ? categoryColor.opacity(0.18)
+                    : Color.black.opacity(0.1),
+                radius: appState.selectedCard?.id == card.id ? 10 : 6,
+                x: 0,
+                y: 2
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                appState.selectCard(card)
+            }
         }
+    }
+
+    private func sanitizeSummary(_ text: String) -> String {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.starts(with: "Активность: ") {
+            s = String(s.dropFirst("Активность: ".count))
+        } else if s.starts(with: "Деятельность: ") {
+            s = String(s.dropFirst("Деятельность: ".count))
+        }
+        return s
     }
 
     private var appUsagesWithIconsView: some View {

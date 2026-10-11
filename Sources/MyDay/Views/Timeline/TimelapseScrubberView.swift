@@ -43,6 +43,9 @@ public final class ScrubberViewModel: ObservableObject {
     @Published public var player: AVPlayer? = nil
     @Published public var showVideoModal: Bool = false
     @Published public var currentImage: NSImage? = nil
+    @Published public var isPlayingSlideshow: Bool = false
+    @Published public var playbackSpeed: Double = 1.0 // 1x, 2x, 5x
+    private var playbackTimer: Timer? = nil
 
     private var imageCache: [Int: NSImage] = [:]
 
@@ -136,9 +139,56 @@ public final class ScrubberViewModel: ObservableObject {
     }
 
     public func closeVideoModal() {
+        stopPlayback()
         self.player?.pause()
         self.player = nil
         self.showVideoModal = false
+    }
+
+    public func togglePlayback() {
+        if isPlayingSlideshow {
+            stopPlayback()
+        } else {
+            startPlayback()
+        }
+    }
+
+    public func startPlayback() {
+        guard !frames.isEmpty else { return }
+        isPlayingSlideshow = true
+
+        let interval = 0.2 / playbackSpeed
+        playbackTimer?.invalidate()
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if self.currentFrameIndex < self.frames.count - 1 {
+                    self.stepFrame(by: 1)
+                } else {
+                    self.currentFrameIndex = 0
+                }
+            }
+        }
+    }
+
+    public func stopPlayback() {
+        isPlayingSlideshow = false
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+    }
+
+    public func cycleSpeed() {
+        if playbackSpeed == 1.0 {
+            playbackSpeed = 2.0
+        } else if playbackSpeed == 2.0 {
+            playbackSpeed = 5.0
+        } else {
+            playbackSpeed = 1.0
+        }
+        if isPlayingSlideshow {
+            stopPlayback()
+            startPlayback()
+        }
     }
 }
 
