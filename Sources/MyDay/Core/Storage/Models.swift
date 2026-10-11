@@ -94,7 +94,7 @@ public struct AppUsageSlice: Codable, Identifiable, Sendable {
 public struct TimelineCard: Codable, Identifiable, Sendable {
     public let id: UUID
     public let startTime: Date
-    public let endTime: Date
+    public var endTime: Date
     public var title: String
     public var summary: String
     public var category: ActivityCategory
