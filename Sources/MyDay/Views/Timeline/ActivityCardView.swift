@@ -166,8 +166,69 @@ public struct ActivityCardView: View {
                     appUsagesWithIconsView
                 }
 
-                // Cinematic Timelapse Scrubber & Preview
-                TimelapseScrubberView(card: card, vm: appState.scrubberVM(for: card))
+                // MARK: - Dayflow-Style Media Strip (Click to open Inspector Modal)
+                if card.frameCount > 0 || card.keyframePath != nil {
+                    Button {
+                        appState.selectedDetailCard = card
+                    } label: {
+                        HStack(spacing: 10) {
+                            // Keyframe thumbnail preview
+                            if let keyframe = card.keyframePath, let img = NSImage(contentsOfFile: keyframe) {
+                                Image(nsImage: img)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 52, height: 34)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                                    )
+                            } else {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.primary.opacity(0.06))
+                                    .frame(width: 52, height: 34)
+                                    .overlay(
+                                        Image(systemName: "photo")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(.secondary)
+                                    )
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(Color.accentColor)
+
+                                    Text("\(max(1, card.frameCount)) скриншотов · Таймлапс")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                }
+
+                                Text("Нажмите для просмотра и покадровой перемотки")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color.accentColor)
+                                .padding(.trailing, 4)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.primary.opacity(0.035))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Открыть скриншоты и таймлапс этой активности")
+                }
 
                 // Tags Pill Row
                 if !card.tags.isEmpty {

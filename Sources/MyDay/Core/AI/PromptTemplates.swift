@@ -35,7 +35,7 @@ public enum PromptTemplates {
         if let prev = previousContext {
             text += "PREVIOUS ADJACENT ACTIVITY:\n"
             text += "Title: \(prev.title)\nSummary: \(prev.summary)\n\n"
-            text += "NOTE: If the current activity is a direct continuation of this previous activity, set 'is_continuation' to true, keep the SAME OR SIMILAR title, and update the summary to reflect the combined progress.\n\n"
+            text += "IMPORTANT: If the user is still doing the same activity or working in the same project/stream/app as PREVIOUS ADJACENT ACTIVITY, set 'is_continuation': true and reuse the same or similar title.\n\n"
         }
 
         text += "Applications used:\n"
@@ -59,7 +59,7 @@ public enum PromptTemplates {
 
         Output schema (strictly valid JSON):
         {
-          "is_continuation": false, // Set to true ONLY if this strongly relates to the PREVIOUS ADJACENT ACTIVITY provided above.
+          "is_continuation": false, // boolean: true if continuing previous activity, false if starting a new distinct task
           "title": "Concise descriptive title of what was done (max 6-8 words, in Russian if user works in Russian or English if in English)",
           "summary": "1-2 brief bullet points or sentences describing the work accomplished (REQUIRED, do not leave empty)",
           "category": "Development | Writing | Research | Communication | Design | Entertainment | Utility | Other",

@@ -20,6 +20,7 @@ public final class AppState: ObservableObject {
     @Published public var isLMStudioConnected: Bool = false
     @Published public var isShowingSettings: Bool = false
     @Published public var isShowingDaySummary: Bool = false
+    @Published public var selectedDetailCard: TimelineCard? = nil
     @Published public var hasScreenPermission: Bool = true
     
     // Scrubber VM Cache
@@ -37,6 +38,7 @@ public final class AppState: ObservableObject {
     // MARK: - Private Services
     private var captureTimer: Timer?
     private var lastCaptureTime: Date = Date()
+    private var lastSavedFrameTime: Date?
     private let db = DatabaseManager.shared
     private let captureManager = ScreenCaptureManager.shared
     private let idleMonitor = IdleMonitor.shared
@@ -48,6 +50,7 @@ public final class AppState: ObservableObject {
 
     public init() {
         loadSettings()
+        _ = db.consolidateAdjacentCards()
         loadCards(for: selectedDate)
         checkLMStudio()
         checkPermissions()
@@ -283,16 +286,20 @@ public final class AppState: ObservableObject {
             let (diffPercent, isSignificant, _) = differencer.calculateDifference(for: cgImage)
             self.lastDiffPercent = diffPercent
 
-            // If screen changed significantly OR active window changed, save frame
-            if isSignificant || diffPercent >= Float(settings.diffThresholdPercent) {
+            // Check if screen changed significantly, active window changed, OR heartbeat interval (75s) expired
+            let isHeartbeat = (lastSavedFrameTime == nil) || (now.timeIntervalSince(lastSavedFrameTime!) >= 75.0)
+            let shouldSaveFrame = isSignificant || (diffPercent >= Float(settings.diffThresholdPercent)) || isHeartbeat
+
+            if shouldSaveFrame {
                 if let savedPath = storage.saveFrame(image: cgImage, timestamp: now) {
+                    self.lastSavedFrameTime = now
                     recordedFrame = RecordedFrame(
                         timestamp: now,
                         filePath: savedPath,
                         appName: context.appName,
                         windowTitle: context.windowTitle,
                         diffScore: diffPercent,
-                        isKeyframe: isSignificant
+                        isKeyframe: isSignificant || isHeartbeat
                     )
                 }
             }
@@ -367,6 +374,16 @@ public final class AppState: ObservableObject {
             if self.toastMessage == message {
                 self.toastMessage = nil
             }
+        }
+    }
+
+    public func consolidateFragmentedCards() {
+        let count = db.consolidateAdjacentCards()
+        loadCards(for: selectedDate)
+        if count > 0 {
+            showToast("Склеено \(count) фрагментов в цельные сессии!")
+        } else {
+            showToast("Все блоки уже оптимально объединены")
         }
     }
 }

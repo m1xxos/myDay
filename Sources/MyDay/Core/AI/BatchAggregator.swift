@@ -96,11 +96,11 @@ public final class BatchAggregator: @unchecked Sendable {
         var cardCategory = ActivityCategory.match(from: primaryApp)
         var cardTags: [String] = [primaryApp.lowercased()]
         var isAnalyzed = false
-        var isContinuation = false
+        var isContinuationAI = false
 
         let lastCard = DatabaseManager.shared.fetchAllCards(limit: 1).first
         
-        // We only allow stitching if the last card ended recently (e.g. less than 20 minutes ago)
+        // Context for LLM prompt if last card ended within 20 minutes
         var previousContext: (title: String, summary: String)? = nil
         if let last = lastCard, currentStart.timeIntervalSince(last.endTime) < 20 * 60 {
             previousContext = (title: last.title, summary: last.summary)
@@ -129,32 +129,46 @@ public final class BatchAggregator: @unchecked Sendable {
                 cardSummary = aiResponse.summary
                 cardCategory = ActivityCategory.match(from: aiResponse.category)
                 cardTags = aiResponse.tags
-                isContinuation = aiResponse.is_continuation
+                isContinuationAI = aiResponse.is_continuation
                 isAnalyzed = true
             } catch {
                 print("[BatchAggregator] LM Studio call skipped/failed: \(error.localizedDescription). Falling back to heuristic card.")
-                
-                // Heuristic stitching fallback
-                if let last = lastCard, last.category == cardCategory, currentStart.timeIntervalSince(last.endTime) < 5 * 60 {
-                    isContinuation = true
-                }
-            }
-        } else {
-             // Heuristic stitching fallback if autoAnalyze is off
-            if let last = lastCard, last.category == cardCategory, currentStart.timeIntervalSince(last.endTime) < 5 * 60 {
-                isContinuation = true
             }
         }
 
-        // Never stitch across more than 3 hours total
-        let wouldExceedMaxBlock = (lastCard != nil) && (currentEnd.timeIntervalSince(lastCard!.startTime) > 3 * 3600)
+        // Deterministic Multi-Tier Stitching Check
+        let shouldStitch: Bool
+        if let last = lastCard {
+            shouldStitch = Self.canStitchSessions(
+                lastCard: last,
+                currentStart: currentStart,
+                currentEnd: currentEnd,
+                newTitle: cardTitle,
+                newCategory: cardCategory,
+                newApps: appSlices,
+                isAIContinuation: isContinuationAI
+            )
+        } else {
+            shouldStitch = false
+        }
 
-        if isContinuation && !wouldExceedMaxBlock, var mergedCard = lastCard {
+        if shouldStitch, var mergedCard = lastCard {
+            print("[BatchAggregator] Stitching batch with previous session '\(mergedCard.title)' (ID: \(mergedCard.id))")
             // Update mergedCard with combined data
             mergedCard.endTime = currentEnd
             mergedCard.frameCount += currentFrames.count
-            mergedCard.title = isAnalyzed ? cardTitle : mergedCard.title
-            mergedCard.summary = isAnalyzed ? cardSummary : mergedCard.summary
+            
+            // If current card was analyzed by AI or has more descriptive title, keep best title
+            if isAnalyzed {
+                if !mergedCard.isAIAnalyzed || mergedCard.title.starts(with: "Работа в ") {
+                    mergedCard.title = cardTitle
+                }
+                mergedCard.isAIAnalyzed = true
+                // Update summary with latest insight if provided
+                if !cardSummary.isEmpty && cardSummary != mergedCard.summary {
+                    mergedCard.summary = cardSummary
+                }
+            }
             
             // Merge app usages
             var combinedUsages = mergedCard.appUsages
@@ -179,7 +193,6 @@ public final class BatchAggregator: @unchecked Sendable {
                 }
             }
             
-            mergedCard.category = cardCategory
             mergedCard.keyframePath = keyframe?.filePath ?? mergedCard.keyframePath
             
             DatabaseManager.shared.saveCard(mergedCard)
@@ -228,5 +241,83 @@ public final class BatchAggregator: @unchecked Sendable {
         guard let image = NSImage(contentsOfFile: path) else { return nil }
         var rect = NSRect(origin: .zero, size: image.size)
         return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+    }
+
+    // MARK: - Multi-Tier Deterministic Stitching Heuristics
+
+    public static func canStitchSessions(
+        lastCard: TimelineCard,
+        currentStart: Date,
+        currentEnd: Date,
+        newTitle: String,
+        newCategory: ActivityCategory,
+        newApps: [AppUsageSlice],
+        isAIContinuation: Bool
+    ) -> Bool {
+        // 1. Time gap check (must be within 15 minutes)
+        let gap = currentStart.timeIntervalSince(lastCard.endTime)
+        guard gap >= -60 && gap <= 15 * 60 else { return false }
+
+        // 2. Max combined duration guardrail (never exceed 3 hours in a single continuous block)
+        let totalSpan = currentEnd.timeIntervalSince(lastCard.startTime)
+        guard totalSpan <= 3 * 3600 else { return false }
+
+        // Tier 1: Explicit AI confirmation
+        if isAIContinuation {
+            return true
+        }
+
+        let cleanLastTitle = lastCard.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanNewTitle = newTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        // Tier 2: Exact title match (e.g. adjacent YouTube, Formula-1, Docker blocks)
+        if !cleanLastTitle.isEmpty && cleanLastTitle == cleanNewTitle {
+            return true
+        }
+
+        // Tier 3: Fuzzy title similarity >= 0.60 within the same category
+        if lastCard.category == newCategory {
+            let sim = titleSimilarity(cleanLastTitle, cleanNewTitle)
+            if sim >= 0.60 {
+                return true
+            }
+        }
+
+        // Tier 4: Dominant application match (> 65% in same app) and same category within 10 min gap
+        if gap <= 10 * 60 && lastCard.category == newCategory {
+            let totalNewSec = newApps.reduce(0.0) { $0 + $1.durationSeconds }
+            if let topNew = newApps.max(by: { $0.durationSeconds < $1.durationSeconds }), totalNewSec > 0 {
+                let newRatio = topNew.durationSeconds / totalNewSec
+                if newRatio >= 0.65 {
+                    let totalLastSec = lastCard.appUsages.reduce(0.0) { $0 + $1.durationSeconds }
+                    if let topLast = lastCard.appUsages.max(by: { $0.durationSeconds < $1.durationSeconds }), totalLastSec > 0 {
+                        if topNew.appName == topLast.appName {
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+
+        return false
+    }
+
+    public static func titleSimilarity(_ s1: String, _ s2: String) -> Double {
+        guard !s1.isEmpty && !s2.isEmpty else { return 0.0 }
+        if s1 == s2 { return 1.0 }
+
+        let stopWords: Set<String> = ["в", "и", "на", "с", "по", "для", "о", "об", "от", "до", "за", "к", "a", "the", "in", "on", "at", "to", "for", "with", "and"]
+        let words1 = Set(s1.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count > 1 && !stopWords.contains($0) })
+        let words2 = Set(s2.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count > 1 && !stopWords.contains($0) })
+
+        guard !words1.isEmpty && !words2.isEmpty else { return 0.0 }
+        let intersection = words1.intersection(words2)
+        let minCount = min(words1.count, words2.count)
+        guard minCount > 0 else { return 0.0 }
+
+        // Overlap coefficient: ratio of shared content words to the shorter title
+        return Double(intersection.count) / Double(minCount)
     }
 }

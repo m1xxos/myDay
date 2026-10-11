@@ -64,6 +64,14 @@ public final class ScrubberViewModel: ObservableObject {
         updateCurrentImage()
     }
     
+    public func stepFrame(by delta: Int) {
+        guard !frames.isEmpty else { return }
+        let newIdx = max(0, min(frames.count - 1, currentFrameIndex + delta))
+        if newIdx != currentFrameIndex {
+            currentFrameIndex = newIdx
+        }
+    }
+    
     private func updateCurrentImage() {
         guard frames.indices.contains(currentFrameIndex) else { return }
         let idx = currentFrameIndex
@@ -146,24 +154,43 @@ public struct TimelapseScrubberView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .bottom) {
-                // Background Frame Display
-                ZStack {
-                    if let nsImage = vm.currentImage {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(height: 160)
-                            .clipped()
-                    } else if let keyframe = card.keyframePath, let nsImage = NSImage(contentsOfFile: keyframe) {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(height: 160)
-                            .clipped()
-                    } else {
-                        placeholderView
+                // Background Frame Display with Direct Hover Scrubber
+                GeometryReader { geo in
+                    ZStack {
+                        if let nsImage = vm.currentImage {
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geo.size.width, height: 160)
+                                .clipped()
+                        } else if let keyframe = card.keyframePath, let nsImage = NSImage(contentsOfFile: keyframe) {
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geo.size.width, height: 160)
+                                .clipped()
+                        } else {
+                            placeholderView
+                                .frame(width: geo.size.width, height: 160)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            vm.isHovering = true
+                            guard !vm.frames.isEmpty, geo.size.width > 0 else { return }
+                            let fraction = max(0.0, min(1.0, location.x / geo.size.width))
+                            let targetIndex = Int(fraction * Double(vm.frames.count - 1))
+                            if targetIndex != vm.currentFrameIndex {
+                                vm.currentFrameIndex = targetIndex
+                            }
+                        case .ended:
+                            vm.isHovering = false
+                        }
                     }
                 }
+                .frame(height: 160)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     // Subtle dark gradient vignette at the bottom for controls readability
@@ -173,6 +200,7 @@ public struct TimelapseScrubberView: View {
                         endPoint: .bottom
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .allowsHitTesting(false)
                 )
 
                 // Controls Overlay
@@ -237,27 +265,6 @@ public struct TimelapseScrubberView: View {
                 }
                 .padding(8)
             }
-            .contentShape(Rectangle())
-            // Mouse hover scrubber
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .onContinuousHover { phase in
-                            switch phase {
-                            case .active(let location):
-                                vm.isHovering = true
-                                guard !vm.frames.isEmpty, geo.size.width > 0 else { return }
-                                let fraction = max(0.0, min(1.0, location.x / geo.size.width))
-                                let targetIndex = Int(fraction * Double(vm.frames.count - 1))
-                                if targetIndex != vm.currentFrameIndex {
-                                    vm.currentFrameIndex = targetIndex
-                                }
-                            case .ended:
-                                vm.isHovering = false
-                            }
-                        }
-                }
-            )
 
             // Sleek Glowing Scrubber Bar
             if vm.frames.count > 1 {

@@ -226,6 +226,67 @@ public final class DatabaseManager: @unchecked Sendable {
         }
     }
 
+    /// Retroactively merges fragmented adjacent cards in database matching stitching rules
+    public func consolidateAdjacentCards() -> Int {
+        let allCards = fetchAllCards(limit: 1000).sorted(by: { $0.startTime < $1.startTime })
+        guard allCards.count > 1 else { return 0 }
+
+        var consolidated: [TimelineCard] = []
+        var mergedCount = 0
+
+        for card in allCards {
+            if let last = consolidated.last, BatchAggregator.canStitchSessions(
+                lastCard: last,
+                currentStart: card.startTime,
+                currentEnd: card.endTime,
+                newTitle: card.title,
+                newCategory: card.category,
+                newApps: card.appUsages,
+                isAIContinuation: false
+            ) {
+                // Merge with last
+                var updated = last
+                updated.endTime = card.endTime
+                updated.frameCount += card.frameCount
+                if card.isAIAnalyzed && !card.title.starts(with: "Работа в ") {
+                    updated.title = card.title
+                    updated.isAIAnalyzed = true
+                }
+                if !card.summary.isEmpty && card.summary != updated.summary {
+                    updated.summary = card.summary
+                }
+                // Merge apps
+                for newUsage in card.appUsages {
+                    if let idx = updated.appUsages.firstIndex(where: { $0.appName == newUsage.appName }) {
+                        updated.appUsages[idx].durationSeconds += newUsage.durationSeconds
+                        for title in newUsage.windowTitles {
+                            if !updated.appUsages[idx].windowTitles.contains(title) {
+                                updated.appUsages[idx].windowTitles.append(title)
+                            }
+                        }
+                    } else {
+                        updated.appUsages.append(newUsage)
+                    }
+                }
+                // Merge tags
+                for tag in card.tags {
+                    if !updated.tags.contains(tag) {
+                        updated.tags.append(tag)
+                    }
+                }
+                updated.keyframePath = card.keyframePath ?? updated.keyframePath
+
+                consolidated[consolidated.count - 1] = updated
+                deleteCard(id: card.id)
+                saveCard(updated)
+                mergedCount += 1
+            } else {
+                consolidated.append(card)
+            }
+        }
+        return mergedCount
+    }
+
     private func parseCard(from stmt: OpaquePointer?) -> TimelineCard? {
         guard let stmt = stmt else { return nil }
 

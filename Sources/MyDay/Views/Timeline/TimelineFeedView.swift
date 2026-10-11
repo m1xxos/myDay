@@ -64,6 +64,9 @@ public struct TimelineFeedView: View {
         .onAppear {
             checkPermissionState()
         }
+        .sheet(item: $appState.selectedDetailCard) { card in
+            ActivityDetailModalView(card: card, appState: appState)
+        }
     }
 
     private var permissionNoticeBanner: some View {
@@ -267,9 +270,29 @@ public struct TimelineFeedView: View {
                             .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
                     )
                 }
+                // Consolidate fragmented sessions button
+                Button {
+                    appState.consolidateFragmentedCards()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.triangle.merge")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("Склеить дубли")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 9)
+                    .frame(height: 30)
+                    .background(Color.white.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+                }
                 .buttonStyle(.plain)
-                .disabled(appState.isAnalyzing)
-                .help("Сформировать блок активности прямо сейчас с помощью нейросети")
+                .help("Объединить смежные фрагментированные блоки за день (YouTube, работа и т.д.)")
                 
                 // Day Summary
                 Button {
