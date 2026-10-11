@@ -71,7 +71,7 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 EOF
 
 echo "🔐 Codesigning $APP_DIR with stable bundle identifier com.m1xxos.myday..."
-codesign --force --deep --sign - --identifier "com.m1xxos.myday" "$APP_DIR"
+codesign --force --deep --sign - --identifier "com.m1xxos.myday" -r='designated => identifier "com.m1xxos.myday"' "$APP_DIR"
 
 # Touch bundle to notify Finder / LaunchServices of icon update
 touch "$APP_DIR"

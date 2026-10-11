@@ -69,6 +69,48 @@ public final class AppState: ObservableObject {
             }
         }
 
+        // System Sleep & Screen Lock Observers
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if self.aggregator.hasEnoughData(minDurationSeconds: 60.0) {
+                    await self.triggerBatchAnalysis()
+                }
+            }
+        }
+        ws.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if self.aggregator.hasEnoughData(minDurationSeconds: 60.0) {
+                    await self.triggerBatchAnalysis()
+                }
+            }
+        }
+        ws.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if self.aggregator.hasEnoughData(minDurationSeconds: 60.0) {
+                    await self.triggerBatchAnalysis()
+                }
+            }
+        }
+        ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.lastCaptureTime = Date()
+            }
+        }
+        ws.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.lastCaptureTime = Date()
+            }
+        }
+        ws.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.lastCaptureTime = Date()
+            }
+        }
+
         // Lightweight watcher when permission is missing
         Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -81,12 +123,12 @@ public final class AppState: ObservableObject {
     }
 
     public func checkPermissions() {
-        let granted = ScreenCaptureManager.shared.checkPermission()
-        if granted != self.hasScreenPermission {
-            self.hasScreenPermission = granted
-            if granted {
-                showToast("Разрешение получено! Запись активна")
-                Task {
+        Task { @MainActor in
+            let granted = await ScreenCaptureManager.shared.verifyPermissionAsync()
+            if granted != self.hasScreenPermission {
+                self.hasScreenPermission = granted
+                if granted {
+                    showToast("Разрешение получено! Запись активна")
                     await self.performPeriodicCapture()
                 }
             }
@@ -186,25 +228,58 @@ public final class AppState: ObservableObject {
     private func performPeriodicCapture() async {
         guard isRecording && !isPaused else { return }
 
+        let now = Date()
+        let timeSinceLast = now.timeIntervalSince(lastCaptureTime)
+
         // 1. Check Idle
-        if idleMonitor.isUserIdle(timeoutSeconds: settings.idleTimeoutSeconds) {
+        let isIdle = idleMonitor.isUserIdle(timeoutSeconds: settings.idleTimeoutSeconds)
+        if isIdle {
+            // User stepped away: finalize active batch if it has enough data
+            if aggregator.hasEnoughData(minDurationSeconds: 60.0) {
+                await triggerBatchAnalysis()
+            }
+            lastCaptureTime = now
             return
         }
 
-        let now = Date()
-        let sliceDuration = max(1, now.timeIntervalSince(lastCaptureTime))
+        // 2. Check if user just woke up from a long sleep/idle gap
+        if timeSinceLast > Double(settings.idleTimeoutSeconds) {
+            // Finalize any previous active work before the gap
+            if aggregator.hasEnoughData(minDurationSeconds: 60.0) {
+                await triggerBatchAnalysis()
+            }
+            lastCaptureTime = now
+            return
+        }
+
         lastCaptureTime = now
 
-        // 2. Window context
+        // 3. Window context
         let context = windowTracker.getCurrentContext()
         self.currentWindowContext = context
 
-        // 3. Screen Capture (optional; do not block activity tracking if capture is pending permission)
+        // Ignore lock screen, screensaver, loginwindow
+        if windowTracker.isSystemLockOrScreensaver(context: context) {
+            if aggregator.hasEnoughData(minDurationSeconds: 60.0) {
+                await triggerBatchAnalysis()
+            }
+            return
+        }
+
+        // 4. Safe slice duration (capped to at most 1.5x capture interval)
+        let sliceDuration = max(1.0, min(timeSinceLast, Double(settings.captureIntervalSeconds * 1.5)))
+
+        // 5. Screen Capture
         let cgImage = await captureManager.captureMainDisplay()
         var recordedFrame: RecordedFrame? = nil
 
         if let cgImage = cgImage {
-            // 4. Perceptual Diff check
+            // Auto-clear permission banner if a frame is successfully captured
+            if !self.hasScreenPermission {
+                self.hasScreenPermission = true
+            }
+
+            // Perceptual Diff check
             let (diffPercent, isSignificant, _) = differencer.calculateDifference(for: cgImage)
             self.lastDiffPercent = diffPercent
 
@@ -223,10 +298,10 @@ public final class AppState: ObservableObject {
             }
         }
 
-        // 5. Always record activity slice
+        // 6. Record activity slice
         aggregator.recordActivity(frame: recordedFrame, context: context, duration: sliceDuration)
 
-        // 6. Check if batch duration expired
+        // 7. Check if batch duration expired
         if aggregator.hasEnoughData(minDurationSeconds: TimeInterval(settings.batchDurationMinutes * 60)) {
             await triggerBatchAnalysis()
         }

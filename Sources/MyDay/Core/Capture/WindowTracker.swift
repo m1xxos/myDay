@@ -34,6 +34,12 @@ public final class WindowTracker: @unchecked Sendable {
         )
     }
 
+    public func isSystemLockOrScreensaver(context: WindowContext) -> Bool {
+        let lockIdentifiers = ["com.apple.loginwindow", "com.apple.ScreenSaver.Engine", "com.apple.LockScreen"]
+        let lockNames = ["loginwindow", "ScreenSaverEngine", "LockScreen"]
+        return lockIdentifiers.contains(context.bundleId) || lockNames.contains(context.appName)
+    }
+
     private func getActiveWindowTitle(for pid: pid_t) -> String? {
         guard pid > 0 else { return nil }
 

@@ -10,7 +10,31 @@ public final class ScreenCaptureManager: @unchecked Sendable {
 
     /// Checks if screen capture permission is granted.
     public func checkPermission() -> Bool {
-        return CGPreflightScreenCaptureAccess()
+        if CGPreflightScreenCaptureAccess() {
+            return true
+        }
+        // Fallback probe: on macOS, CGPreflight can report false even when permission was enabled
+        // until the process is restarted, or when ScreenCaptureKit is active.
+        if let img = CGDisplayCreateImage(CGMainDisplayID()), img.width > 0 {
+            return true
+        }
+        return false
+    }
+
+    /// Asynchronous verification using modern ScreenCaptureKit
+    public func verifyPermissionAsync() async -> Bool {
+        if checkPermission() {
+            return true
+        }
+        if #available(macOS 14.0, *) {
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                return !content.displays.isEmpty
+            } catch {
+                return false
+            }
+        }
+        return false
     }
 
     /// Requests screen capture permission prompt.

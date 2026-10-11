@@ -21,9 +21,12 @@ public final class BatchAggregator: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        // Sanity cap: slice duration should never exceed 60 seconds
+        let safeDuration = min(duration, 60.0)
+
         let app = context.appName
         if var slice = appUsages[app] {
-            slice.durationSeconds += duration
+            slice.durationSeconds += safeDuration
             if !slice.windowTitles.contains(context.windowTitle) && !context.windowTitle.isEmpty {
                 slice.windowTitles.append(context.windowTitle)
             }
@@ -32,7 +35,7 @@ public final class BatchAggregator: @unchecked Sendable {
             appUsages[app] = AppUsageSlice(
                 appName: app,
                 bundleId: context.bundleId,
-                durationSeconds: duration,
+                durationSeconds: safeDuration,
                 windowTitles: context.windowTitle.isEmpty ? [] : [context.windowTitle]
             )
         }
@@ -68,7 +71,8 @@ public final class BatchAggregator: @unchecked Sendable {
             )]
         }
 
-        let duration = max(60, currentEnd.timeIntervalSince(currentStart))
+        let totalActiveSeconds = appSlices.reduce(0.0) { $0 + $1.durationSeconds }
+        let duration = max(60, min(currentEnd.timeIntervalSince(currentStart), totalActiveSeconds + 120.0))
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "HH:mm"
         let rangeStr = "\(timeFormatter.string(from: currentStart)) – \(timeFormatter.string(from: currentEnd)) (\(max(1, Int(duration / 60))) min)"
@@ -142,7 +146,10 @@ public final class BatchAggregator: @unchecked Sendable {
             }
         }
 
-        if isContinuation, var mergedCard = lastCard {
+        // Never stitch across more than 3 hours total
+        let wouldExceedMaxBlock = (lastCard != nil) && (currentEnd.timeIntervalSince(lastCard!.startTime) > 3 * 3600)
+
+        if isContinuation && !wouldExceedMaxBlock, var mergedCard = lastCard {
             // Update mergedCard with combined data
             mergedCard.endTime = currentEnd
             mergedCard.frameCount += currentFrames.count
@@ -203,15 +210,16 @@ public final class BatchAggregator: @unchecked Sendable {
         defer { lock.unlock() }
 
         let start = batchStartTime
-        let end = Date()
+        let end = min(Date(), lastRecordedTime.addingTimeInterval(60.0))
         let usages = appUsages
         let recordedFrames = frames
 
         // Reset
-        self.batchStartTime = end
+        let now = Date()
+        self.batchStartTime = now
         self.appUsages = [:]
         self.frames = []
-        self.lastRecordedTime = end
+        self.lastRecordedTime = now
 
         return (start, end, usages, recordedFrames)
     }
