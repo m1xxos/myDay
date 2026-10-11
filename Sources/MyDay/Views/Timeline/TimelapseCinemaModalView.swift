@@ -254,6 +254,7 @@ public struct TimelapseCinemaModalView: View {
         .background(Color.black)
         .task {
             vm.loadFrames(for: card)
+            vm.currentFrameIndex = 0
         }
         .onDisappear {
             vm.stopPlayback()

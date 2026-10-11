@@ -176,15 +176,19 @@ public struct TimelineFeedView: View {
                                 .foregroundColor(.primary)
 
                             if !current.windowTitle.isEmpty && current.windowTitle != current.appName {
-                                Text("–")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary.opacity(0.4))
+                                let cleanTitle = TimelineCard.cleanWindowTitle(current.windowTitle, appName: current.appName)
+                                if !cleanTitle.isEmpty && cleanTitle != current.appName {
+                                    Text("–")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary.opacity(0.4))
 
-                                Text(current.windowTitle)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: 200, alignment: .leading)
+                                    Text(cleanTitle)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .frame(maxWidth: 110, alignment: .leading)
+                                }
                             }
 
                             if appState.lastDiffPercent > 0 {
@@ -212,17 +216,18 @@ public struct TimelineFeedView: View {
                         .foregroundColor(.secondary)
                 }
             }
+            .layoutPriority(0)
 
             Spacer()
 
             // Action Buttons
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 // Pause / Resume Toggle
                 Button {
                     appState.togglePause()
                 } label: {
                     Image(systemName: appState.isPaused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(appState.isPaused ? .green : .secondary)
                         .frame(width: 30, height: 30)
                         .background(Color.white.opacity(0.05))
@@ -241,92 +246,91 @@ public struct TimelineFeedView: View {
                         await appState.triggerBatchAnalysis()
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        if appState.isAnalyzing {
+                    if appState.isAnalyzing {
+                        HStack(spacing: 5) {
                             ProgressView()
                                 .scaleEffect(0.6)
                                 .frame(width: 12, height: 12)
-                            Text("Анализирую...")
-                                .font(.system(size: 12, weight: .medium))
+                            Text("Анализ...")
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.primary)
-                        } else {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.accentColor)
-                            Text("Собрать блок")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.primary)
+                                .lineLimit(1)
+                                .fixedSize()
                         }
+                        .padding(.horizontal, 8)
+                        .frame(height: 30)
+                        .background(Color.white.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.accentColor.opacity(0.4), lineWidth: 1)
+                        )
+                    } else {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.accentColor)
+                            .frame(width: 30, height: 30)
+                            .background(Color.white.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+                            )
                     }
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
-                    )
                 }
-                // Consolidate fragmented sessions button
+                .buttonStyle(.plain)
+                .help("Собрать накопленные снимки в AI-блок")
+
+                // Consolidate fragmented sessions button ("Склеить дубли")
                 Button {
                     appState.consolidateFragmentedCards()
                 } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.triangle.merge")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Text("Склеить дубли")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal, 9)
-                    .frame(height: 30)
-                    .background(Color.white.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
+                    Image(systemName: "arrow.triangle.merge")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
                 }
                 .buttonStyle(.plain)
-                .help("Объединить смежные фрагментированные блоки за день (YouTube, работа и т.д.)")
-                
-                // Day Summary
+                .help("Склеить дублирующиеся активности за день")
+
+                // Day Summary ("Итоги дня")
                 Button {
                     appState.isShowingDaySummary = true
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "film")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.accentColor)
-                        Text("Итоги дня")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.primary)
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
+                    Image(systemName: "film")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.primary.opacity(0.85))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                        )
                 }
                 .buttonStyle(.plain)
-                .help("Сгенерировать итоги и таймлапс всего дня")
+                .help("Открыть итоги дня и видео-таймлапс")
 
                 // Export Obsidian ("В Obsidian")
                 Button {
                     appState.copyObsidianDay()
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: "doc.on.doc.fill")
                             .font(.system(size: 11, weight: .bold))
                         Text("В Obsidian")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 13)
+                    .padding(.horizontal, 10)
                     .frame(height: 30)
                     .background(
                         LinearGradient(
@@ -343,7 +347,7 @@ public struct TimelineFeedView: View {
                     .shadow(color: Color.accentColor.opacity(0.35), radius: 6, x: 0, y: 2)
                 }
                 .buttonStyle(.plain)
-                .help("Скопировать журнал дня в Markdown буфер обмена для Obsidian")
+                .help("Скопировать журнал дня в буфер обмена для Obsidian")
 
                 // Inspector Toggle Button
                 Button {
@@ -363,8 +367,9 @@ public struct TimelineFeedView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help(appState.isInspectorVisible ? "Скрыть инспектор деталей" : "Показать инспектор деталей")
+                .help(appState.isInspectorVisible ? "Скрыть панель деталей" : "Показать панель деталей")
             }
+            .layoutPriority(1)
         }
     }
 

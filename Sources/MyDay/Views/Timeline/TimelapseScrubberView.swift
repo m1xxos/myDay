@@ -57,7 +57,7 @@ public final class ScrubberViewModel: ObservableObject {
         let loaded = TimelapseStorage.shared.getFrames(between: card.startTime, and: card.endTime)
         if !loaded.isEmpty {
             self.frames = loaded
-            self.currentFrameIndex = loaded.count / 2
+            self.currentFrameIndex = 0
         } else if let keyframe = card.keyframePath, FileManager.default.fileExists(atPath: keyframe) {
             self.frames = [URL(fileURLWithPath: keyframe)]
             self.currentFrameIndex = 0
@@ -155,6 +155,9 @@ public final class ScrubberViewModel: ObservableObject {
 
     public func startPlayback() {
         guard !frames.isEmpty else { return }
+        if currentFrameIndex >= frames.count - 1 {
+            currentFrameIndex = 0
+        }
         isPlayingSlideshow = true
 
         let interval = 0.2 / playbackSpeed

@@ -205,6 +205,9 @@ public final class AppState: ObservableObject {
 
     public func openCinemaPlayer(for card: TimelineCard) {
         self.cinemaCard = card
+        let vm = scrubberVM(for: card)
+        vm.loadFrames(for: card)
+        vm.currentFrameIndex = 0
         self.isShowingCinemaModal = true
     }
 
