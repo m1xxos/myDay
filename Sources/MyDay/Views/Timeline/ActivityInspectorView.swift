@@ -370,17 +370,16 @@ public struct ActivityInspectorView: View {
 
     // MARK: - Clean Tags Flow
     private func tagsFlowView(tags: [String]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 5) {
-                ForEach(tags.prefix(6), id: \.self) { tag in
-                    Text("#\(tag)")
-                        .font(.system(size: 10, weight: .medium))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.06))
-                        .foregroundColor(.secondary)
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                }
+        FlowLayout(spacing: 6, lineSpacing: 6) {
+            ForEach(tags, id: \.self) { tag in
+                Text("#\(tag)")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .lineLimit(1)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(Color.white.opacity(0.06))
+                    .foregroundColor(.secondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
             }
         }
     }

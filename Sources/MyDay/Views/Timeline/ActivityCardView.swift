@@ -104,30 +104,11 @@ public struct ActivityCardView: View {
 
                     Spacer()
 
-                    // Quick Actions
-                    Button {
-                        appState.copyObsidianCard(card)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 10))
-                            Text("Obsidian")
-                                .font(.system(size: 10, weight: .medium))
-                        }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.primary.opacity(0.06))
-                        .foregroundColor(.secondary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Скопировать карточку в буфер для Obsidian")
-
                     Menu {
                         Button {
                             appState.copyObsidianCard(card)
                         } label: {
-                            Label("Копировать Markdown", systemImage: "doc.on.doc")
+                            Label("Копировать в Obsidian", systemImage: "doc.on.doc")
                         }
 
                         Divider()
@@ -154,7 +135,7 @@ public struct ActivityCardView: View {
                         .foregroundColor(.primary)
 
                     let cleanSummary = sanitizeSummary(card.summary)
-                    if !cleanSummary.isEmpty {
+                    if !cleanSummary.isEmpty && cleanSummary.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != card.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
                         Text(cleanSummary)
                             .font(.system(size: 12.5))
                             .foregroundColor(.secondary)
@@ -222,12 +203,13 @@ public struct ActivityCardView: View {
                 // Tags Pill Row
                 let tags = card.cleanedTags
                 if !tags.isEmpty {
-                    HStack(spacing: 5) {
-                        ForEach(tags.prefix(4), id: \.self) { tag in
+                    FlowLayout(spacing: 5, lineSpacing: 4) {
+                        ForEach(tags.prefix(6), id: \.self) { tag in
                             Text("#\(tag)")
                                 .font(.system(size: 10, weight: .medium))
+                                .lineLimit(1)
                                 .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
+                                .padding(.vertical, 2.5)
                                 .background(Color.primary.opacity(0.05))
                                 .foregroundColor(.secondary)
                                 .clipShape(RoundedRectangle(cornerRadius: 4))

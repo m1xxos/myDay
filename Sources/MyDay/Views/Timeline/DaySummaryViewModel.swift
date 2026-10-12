@@ -2,81 +2,138 @@ import Foundation
 import SwiftUI
 import AVFoundation
 
+public struct DayCategoryStat: Identifiable {
+    public var id: ActivityCategory { category }
+    public let category: ActivityCategory
+    public let duration: TimeInterval
+    public let percentage: Double
+}
+
+public struct DayAppStat: Identifiable {
+    public var id: String { bundleId.isEmpty ? appName : bundleId }
+    public let appName: String
+    public let bundleId: String
+    public let duration: TimeInterval
+    public let percentage: Double
+}
+
 @MainActor
 public final class DaySummaryViewModel: ObservableObject {
-    @Published public var isGenerating: Bool = false
-    @Published public var aiSummary: String = ""
+    @Published public var isGeneratingVideo: Bool = false
     @Published public var videoPlayer: AVPlayer? = nil
+    
+    @Published public var totalDuration: TimeInterval = 0
+    @Published public var totalCardsCount: Int = 0
+    @Published public var totalFramesCount: Int = 0
+    @Published public var categoryStats: [DayCategoryStat] = []
+    @Published public var topApps: [DayAppStat] = []
+    @Published public var totalVideoFrames: Int = 0
     
     public init() {}
     
-    public func generateSummary(for date: Date, cards: [TimelineCard], appState: AppState) {
-        guard !cards.isEmpty else {
-            self.aiSummary = "Нет активности за этот день."
-            return
-        }
+    public func loadSummary(cards: [TimelineCard]) {
+        self.totalCardsCount = cards.count
+        self.totalDuration = cards.reduce(0.0) { $0 + $1.duration }
+        self.totalFramesCount = cards.reduce(0) { $0 + $1.frameCount }
         
-        isGenerating = true
-        self.aiSummary = "Анализирую день..."
-        
-        Task {
-            // 1. Compile video
-            await compileVideo(cards: cards)
-            
-            // 2. Request AI Summary
-            await generateTextSummary(cards: cards, settings: appState.settings)
-            
-            isGenerating = false
-        }
-    }
-    
-    private func compileVideo(cards: [TimelineCard]) async {
-        var allFrames: [URL] = []
+        // 1. Calculate Category Distribution
+        var categoryDurations: [ActivityCategory: TimeInterval] = [:]
         for card in cards {
-            let frames = TimelapseStorage.shared.getFrames(between: card.startTime, and: card.endTime)
-            allFrames.append(contentsOf: frames)
+            categoryDurations[card.category, default: 0] += card.duration
         }
         
-        guard !allFrames.isEmpty else { return }
+        let totalTime = max(1.0, self.totalDuration)
+        self.categoryStats = categoryDurations.map { cat, dur in
+            DayCategoryStat(
+                category: cat,
+                duration: dur,
+                percentage: (dur / totalTime) * 100.0
+            )
+        }.sorted { $0.duration > $1.duration }
         
-        let tempDir = FileManager.default.temporaryDirectory
-        let outURL = tempDir.appendingPathComponent("day_timelapse_\(UUID().uuidString).mp4")
+        // 2. Calculate Top App Usages
+        var appDurations: [String: (appName: String, bundleId: String, duration: TimeInterval)] = [:]
+        for card in cards {
+            for usage in card.appUsages {
+                let key = usage.bundleId.isEmpty ? usage.appName : usage.bundleId
+                if var existing = appDurations[key] {
+                    existing.duration += usage.durationSeconds
+                    appDurations[key] = existing
+                } else {
+                    appDurations[key] = (usage.appName, usage.bundleId, usage.durationSeconds)
+                }
+            }
+        }
         
-        do {
-            // 60 fps for fast day summary
-            let videoURL = try await TimelapseGenerator.shared.generateTimelapseVideo(frameURLs: allFrames, outputURL: outURL, fps: 60)
-            let p = AVPlayer(url: videoURL)
-            self.videoPlayer = p
-            p.play()
-        } catch {
-            print("[DaySummary] Video error: \(error)")
+        let totalAppTime = max(1.0, appDurations.values.reduce(0.0) { $0 + $1.duration })
+        self.topApps = appDurations.values.map { item in
+            DayAppStat(
+                appName: item.appName,
+                bundleId: item.bundleId,
+                duration: item.duration,
+                percentage: (item.duration / totalAppTime) * 100.0
+            )
+        }.sorted { $0.duration > $1.duration }
+        
+        // 3. Compile Day Timelapse Video in background
+        compileVideo(cards: cards)
+    }
+    
+    private func compileVideo(cards: [TimelineCard]) {
+        guard !cards.isEmpty else { return }
+        
+        isGeneratingVideo = true
+        Task {
+            var allFrames: [URL] = []
+            for card in cards {
+                let frames = TimelapseStorage.shared.getFrames(between: card.startTime, and: card.endTime)
+                allFrames.append(contentsOf: frames)
+            }
+            
+            await MainActor.run {
+                self.totalVideoFrames = allFrames.count
+            }
+            
+            guard !allFrames.isEmpty else {
+                await MainActor.run {
+                    self.isGeneratingVideo = false
+                }
+                return
+            }
+            
+            let tempDir = FileManager.default.temporaryDirectory
+            let outURL = tempDir.appendingPathComponent("day_timelapse_\(UUID().uuidString).mp4")
+            
+            do {
+                // 60 fps for fast day summary video
+                let videoURL = try await TimelapseGenerator.shared.generateTimelapseVideo(frameURLs: allFrames, outputURL: outURL, fps: 60)
+                let p = AVPlayer(url: videoURL)
+                await MainActor.run {
+                    self.videoPlayer = p
+                    self.isGeneratingVideo = false
+                    p.play()
+                }
+            } catch {
+                print("[DaySummary] Video error: \(error)")
+                await MainActor.run {
+                    self.isGeneratingVideo = false
+                }
+            }
         }
     }
     
-    private func generateTextSummary(cards: [TimelineCard], settings: UserSettings) async {
-        if !settings.autoAnalyze {
-            self.aiSummary = "AI анализ выключен в настройках."
-            return
-        }
-        
-        let prompt = PromptTemplates.buildDaySummaryPrompt(cards: cards)
-        do {
-            let response = try await LMStudioClient.shared.analyzeActivity(
-                baseURL: settings.lmStudioEndpoint,
-                model: settings.selectedModel,
-                userPrompt: prompt,
-                keyframePath: nil,
-                isVisionMode: false
-            )
-            // AIActivityResponse might fail if we asked for markdown, wait!
-            // I should just use raw chat endpoint if I asked for markdown, 
-            // but `analyzeActivity` forces JSON. 
-            // Since it's a day summary, maybe I can just ask for JSON with a single "summary" field?
-            self.aiSummary = response.summary
-        } catch {
-            // Because our LMStudioClient forces JSON parsing, let's just make it return JSON format in the prompt
-            print("[DaySummary] AI error: \(error)")
-            self.aiSummary = "Не удалось сгенерировать итоги: \(error.localizedDescription)"
+    public func cleanup() {
+        self.videoPlayer?.pause()
+        self.videoPlayer = nil
+    }
+    
+    public static func formatDuration(_ duration: TimeInterval) -> String {
+        let hours = Int(duration) / 3600
+        let minutes = (Int(duration) % 3600) / 60
+        if hours > 0 {
+            return "\(hours) ч \(minutes) мин"
+        } else {
+            return "\(max(1, minutes)) мин"
         }
     }
 }
