@@ -21,15 +21,24 @@ public struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 10) {
             // Header status
             HStack(spacing: 8) {
+                let isPrivate = appState.settings.excludePrivateBrowsing && (appState.currentWindowContext?.isPrivateBrowsing == true)
+                let isCapturing = appState.isRecording && !appState.isPaused && !isPrivate
+
                 Circle()
-                    .fill(appState.isRecording && !appState.isPaused ? Color.green : Color.orange)
+                    .fill(isCapturing ? Color.green : (isPrivate ? Color.purple : Color.orange))
                     .frame(width: 8, height: 8)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(appState.isPaused ? "Запись на паузе" : "MyDay: \(appState.currentWindowContext?.appName ?? "Активен")")
-                        .font(.system(size: 12, weight: .semibold))
+                    if isPrivate {
+                        Text("MyDay: Приватный режим")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.purple)
+                    } else {
+                        Text(appState.isPaused ? "Запись на паузе" : "MyDay: \(appState.currentWindowContext?.appName ?? "Активен")")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
 
-                    Text("Сегодня: \(totalDurationString) · \(appState.cards.count) блоков")
+                    Text(isPrivate ? "Запись экрана приостановлена" : "Сегодня: \(totalDurationString) · \(appState.cards.count) блоков")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                 }

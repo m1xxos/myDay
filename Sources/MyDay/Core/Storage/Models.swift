@@ -245,16 +245,59 @@ public struct UserSettings: Codable, Sendable {
     public var diffThresholdPercent: Double
     public var retentionDays: Int
     public var autoAnalyze: Bool
+    public var excludePrivateBrowsing: Bool
 
-    public static let `default` = UserSettings(
-        lmStudioEndpoint: "http://127.0.0.1:1234/v1",
-        selectedModel: "qwen3-vl-4b-instruct",
-        analysisMode: .textFirst,
-        captureIntervalSeconds: 20.0,
-        batchDurationMinutes: 10,
-        idleTimeoutSeconds: 120.0,
-        diffThresholdPercent: 2.5,
-        retentionDays: 7,
-        autoAnalyze: true
-    )
+    public init(
+        lmStudioEndpoint: String = "http://127.0.0.1:1234/v1",
+        selectedModel: String = "qwen3-vl-4b-instruct",
+        analysisMode: AnalysisMode = .textFirst,
+        captureIntervalSeconds: Double = 20.0,
+        batchDurationMinutes: Int = 10,
+        idleTimeoutSeconds: Double = 120.0,
+        diffThresholdPercent: Double = 2.5,
+        retentionDays: Int = 7,
+        autoAnalyze: Bool = true,
+        excludePrivateBrowsing: Bool = true
+    ) {
+        self.lmStudioEndpoint = lmStudioEndpoint
+        self.selectedModel = selectedModel
+        self.analysisMode = analysisMode
+        self.captureIntervalSeconds = captureIntervalSeconds
+        self.batchDurationMinutes = batchDurationMinutes
+        self.idleTimeoutSeconds = idleTimeoutSeconds
+        self.diffThresholdPercent = diffThresholdPercent
+        self.retentionDays = retentionDays
+        self.autoAnalyze = autoAnalyze
+        self.excludePrivateBrowsing = excludePrivateBrowsing
+    }
+
+    public static let `default` = UserSettings()
+
+    enum CodingKeys: String, CodingKey {
+        case lmStudioEndpoint
+        case selectedModel
+        case analysisMode
+        case captureIntervalSeconds
+        case batchDurationMinutes
+        case idleTimeoutSeconds
+        case diffThresholdPercent
+        case retentionDays
+        case autoAnalyze
+        case excludePrivateBrowsing
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        lmStudioEndpoint = try container.decodeIfPresent(String.self, forKey: .lmStudioEndpoint) ?? "http://127.0.0.1:1234/v1"
+        selectedModel = try container.decodeIfPresent(String.self, forKey: .selectedModel) ?? "qwen3-vl-4b-instruct"
+        analysisMode = try container.decodeIfPresent(AnalysisMode.self, forKey: .analysisMode) ?? .textFirst
+        captureIntervalSeconds = try container.decodeIfPresent(Double.self, forKey: .captureIntervalSeconds) ?? 20.0
+        batchDurationMinutes = try container.decodeIfPresent(Int.self, forKey: .batchDurationMinutes) ?? 10
+        idleTimeoutSeconds = try container.decodeIfPresent(Double.self, forKey: .idleTimeoutSeconds) ?? 120.0
+        diffThresholdPercent = try container.decodeIfPresent(Double.self, forKey: .diffThresholdPercent) ?? 2.5
+        retentionDays = try container.decodeIfPresent(Int.self, forKey: .retentionDays) ?? 7
+        autoAnalyze = try container.decodeIfPresent(Bool.self, forKey: .autoAnalyze) ?? true
+        excludePrivateBrowsing = try container.decodeIfPresent(Bool.self, forKey: .excludePrivateBrowsing) ?? true
+    }
 }
+

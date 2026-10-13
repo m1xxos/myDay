@@ -135,32 +135,44 @@ public struct TimelineFeedView: View {
         HStack(spacing: 12) {
             // Live Status Capsule
             HStack(spacing: 8) {
-                // Pulse Dot & LIVE Badge
+                let isPrivate = appState.settings.excludePrivateBrowsing && (appState.currentWindowContext?.isPrivateBrowsing == true)
+                let isCapturing = appState.isRecording && !appState.isPaused && !isPrivate
+
+                // Pulse Dot & Status Badge
                 HStack(spacing: 5) {
                     ZStack {
                         Circle()
-                            .fill(appState.isRecording && !appState.isPaused ? Color.green.opacity(0.3) : Color.orange.opacity(0.3))
+                            .fill(isCapturing ? Color.green.opacity(0.3) : (isPrivate ? Color.purple.opacity(0.3) : Color.orange.opacity(0.3)))
                             .frame(width: 14, height: 14)
 
                         Circle()
-                            .fill(appState.isRecording && !appState.isPaused ? Color.green : Color.orange)
+                            .fill(isCapturing ? Color.green : (isPrivate ? Color.purple : Color.orange))
                             .frame(width: 7, height: 7)
                     }
 
-                    Text(appState.isRecording && !appState.isPaused ? "LIVE" : "PAUSED")
-                        .font(.system(size: 9, weight: .heavy, design: .monospaced))
-                        .foregroundColor(appState.isRecording && !appState.isPaused ? Color.green : Color.orange)
+                    if isPrivate {
+                        Image(systemName: "eye.slash.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.purple)
+                        Text("PRIVATE")
+                            .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                            .foregroundColor(.purple)
+                    } else {
+                        Text(isCapturing ? "LIVE" : "PAUSED")
+                            .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                            .foregroundColor(isCapturing ? Color.green : Color.orange)
+                    }
                 }
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
                 .background(
-                    (appState.isRecording && !appState.isPaused ? Color.green : Color.orange).opacity(0.12)
+                    (isCapturing ? Color.green : (isPrivate ? Color.purple : Color.orange)).opacity(0.12)
                 )
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
                         .stroke(
-                            (appState.isRecording && !appState.isPaused ? Color.green : Color.orange).opacity(0.25),
+                            (isCapturing ? Color.green : (isPrivate ? Color.purple : Color.orange)).opacity(0.25),
                             lineWidth: 1
                         )
                 )
@@ -168,47 +180,73 @@ public struct TimelineFeedView: View {
                 // Current Active Window Pill
                 if appState.isRecording && !appState.isPaused {
                     if let current = appState.currentWindowContext {
-                        HStack(spacing: 6) {
-                            AppIconView(bundleId: current.bundleId, appName: current.appName, size: 16)
+                        if isPrivate {
+                            HStack(spacing: 6) {
+                                AppIconView(bundleId: current.bundleId, appName: current.appName, size: 16)
 
-                            Text(current.appName)
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
+                                Text(current.appName)
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.primary)
 
-                            if !current.windowTitle.isEmpty && current.windowTitle != current.appName {
-                                let cleanTitle = TimelineCard.cleanWindowTitle(current.windowTitle, appName: current.appName)
-                                if !cleanTitle.isEmpty && cleanTitle != current.appName {
-                                    Text("–")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary.opacity(0.4))
+                                Text("–")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary.opacity(0.4))
 
-                                    Text(cleanTitle)
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                        .frame(maxWidth: 110, alignment: .leading)
+                                Text("Приватный режим · Запись приостановлена")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.purple)
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color.purple.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.purple.opacity(0.25), lineWidth: 1)
+                            )
+                        } else {
+                            HStack(spacing: 6) {
+                                AppIconView(bundleId: current.bundleId, appName: current.appName, size: 16)
+
+                                Text(current.appName)
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.primary)
+
+                                if !current.windowTitle.isEmpty && current.windowTitle != current.appName {
+                                    let cleanTitle = TimelineCard.cleanWindowTitle(current.windowTitle, appName: current.appName)
+                                    if !cleanTitle.isEmpty && cleanTitle != current.appName {
+                                        Text("–")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary.opacity(0.4))
+
+                                        Text(cleanTitle)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                            .frame(maxWidth: 110, alignment: .leading)
+                                    }
+                                }
+
+                                if appState.lastDiffPercent > 0 {
+                                    Text("· \(String(format: "%.1f", appState.lastDiffPercent))% diff")
+                                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                        .foregroundColor(.secondary.opacity(0.8))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color.white.opacity(0.04))
+                                        .clipShape(RoundedRectangle(cornerRadius: 4))
                                 }
                             }
-
-                            if appState.lastDiffPercent > 0 {
-                                Text("· \(String(format: "%.1f", appState.lastDiffPercent))% diff")
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.secondary.opacity(0.8))
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(Color.white.opacity(0.04))
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                            )
                         }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(Color.white.opacity(0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                        )
                     }
                 } else {
                     Text("Запись приостановлена")

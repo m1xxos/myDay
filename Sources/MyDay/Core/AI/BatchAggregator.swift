@@ -18,6 +18,10 @@ public final class BatchAggregator: @unchecked Sendable {
         context: WindowContext,
         duration: TimeInterval
     ) {
+        if context.isPrivateBrowsing {
+            return
+        }
+
         lock.lock()
         defer { lock.unlock() }
 

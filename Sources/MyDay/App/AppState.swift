@@ -309,6 +309,15 @@ public final class AppState: ObservableObject {
             return
         }
 
+        // Automatic exclusion of private / incognito browser windows
+        if settings.excludePrivateBrowsing && context.isPrivateBrowsing {
+            if aggregator.hasAnyData() {
+                _ = await aggregator.finalizePreGapBatch(settings: settings)
+                loadCards(for: selectedDate)
+            }
+            return
+        }
+
         // 4. Safe slice duration (capped to at most 1.5x capture interval)
         let sliceDuration = max(1.0, min(timeSinceLast, Double(settings.captureIntervalSeconds * 1.5)))
 
@@ -364,22 +373,25 @@ public final class AppState: ObservableObject {
         let context = windowTracker.getCurrentContext()
         self.currentWindowContext = context
 
-        let cgImage = await captureManager.captureMainDisplay()
-        var frame: RecordedFrame? = nil
-        if let cgImage = cgImage {
-            if let savedPath = storage.saveFrame(image: cgImage, timestamp: Date()) {
-                frame = RecordedFrame(
-                    timestamp: Date(),
-                    filePath: savedPath,
-                    appName: context.appName,
-                    windowTitle: context.windowTitle,
-                    diffScore: 100.0,
-                    isKeyframe: true
-                )
-            }
-        }
+        let isBlocked = (settings.excludePrivateBrowsing && context.isPrivateBrowsing) || windowTracker.isSystemLockOrScreensaver(context: context)
 
-        aggregator.recordActivity(frame: frame, context: context, duration: 60.0)
+        if !isBlocked {
+            let cgImage = await captureManager.captureMainDisplay()
+            var frame: RecordedFrame? = nil
+            if let cgImage = cgImage {
+                if let savedPath = storage.saveFrame(image: cgImage, timestamp: Date()) {
+                    frame = RecordedFrame(
+                        timestamp: Date(),
+                        filePath: savedPath,
+                        appName: context.appName,
+                        windowTitle: context.windowTitle,
+                        diffScore: 100.0,
+                        isKeyframe: true
+                    )
+                }
+            }
+            aggregator.recordActivity(frame: frame, context: context, duration: 60.0)
+        }
 
         let card = await aggregator.finalizeBatch(settings: settings, forceImmediate: true)
         isAnalyzing = false

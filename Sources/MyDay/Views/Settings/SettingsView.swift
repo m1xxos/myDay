@@ -12,6 +12,7 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var diffThreshold: Double = 2.5
     @Published public var retentionDays: Int = 7
     @Published public var autoAnalyze: Bool = true
+    @Published public var excludePrivateBrowsing: Bool = true
     @Published public var connectionStatus: String? = nil
 
     public init() {}
@@ -26,6 +27,7 @@ public final class SettingsViewModel: ObservableObject {
         self.diffThreshold = settings.diffThresholdPercent
         self.retentionDays = settings.retentionDays
         self.autoAnalyze = settings.autoAnalyze
+        self.excludePrivateBrowsing = settings.excludePrivateBrowsing
     }
 
     public func testConnection(appState: AppState) {
@@ -57,6 +59,7 @@ public final class SettingsViewModel: ObservableObject {
         updated.diffThresholdPercent = diffThreshold
         updated.retentionDays = retentionDays
         updated.autoAnalyze = autoAnalyze
+        updated.excludePrivateBrowsing = excludePrivateBrowsing
 
         appState.updateSettings(updated)
     }
@@ -169,7 +172,17 @@ public struct SettingsView: View {
                     Text("Интервалы и аппаратная оптимизация")
                 }
 
-                // Section 3: Хранилище
+                // Section 3: Конфиденциальность
+                Section {
+                    Toggle("Исключать приватные окна браузеров", isOn: $vm.excludePrivateBrowsing)
+                    Text("Окна в режиме Инкогнито и Частного доступа (Zen, Safari, Chrome, Arc, Brave, Firefox и др.) автоматически не записываются.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                } header: {
+                    Text("Конфиденциальность")
+                }
+
+                // Section 4: Хранилище
                 Section {
                     Stepper("Хранить кадры: \(vm.retentionDays) дней", value: $vm.retentionDays, in: 1...30)
 
