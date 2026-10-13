@@ -53,6 +53,7 @@ public final class AppState: ObservableObject {
 
     public init() {
         loadSettings()
+        _ = db.sanitizeAndFixCrossDayCards()
         _ = db.consolidateAdjacentCards()
         loadCards(for: selectedDate)
         checkLMStudio()
@@ -256,37 +257,54 @@ public final class AppState: ObservableObject {
         let now = Date()
         let timeSinceLast = now.timeIntervalSince(lastCaptureTime)
 
-        // 1. Check Idle
-        let isIdle = idleMonitor.isUserIdle(timeoutSeconds: settings.idleTimeoutSeconds)
-        if isIdle {
-            // User stepped away: finalize active batch if it has enough data
-            if aggregator.hasEnoughData(minDurationSeconds: 60.0) {
-                await triggerBatchAnalysis()
+        // 1. Long Sleep/Idle Gap Detection (e.g. laptop lid closed or suspended)
+        // If more than 3 minutes (or idleTimeoutSeconds) passed since last capture tick:
+        if timeSinceLast > Double(min(settings.idleTimeoutSeconds, 180)) {
+            print("[AppState] Detected sleep/wake gap: \(Int(timeSinceLast))s since last capture.")
+            if aggregator.hasAnyData() {
+                _ = await aggregator.finalizePreGapBatch(settings: settings)
+                loadCards(for: selectedDate)
+            } else {
+                aggregator.reset()
             }
             lastCaptureTime = now
             return
         }
 
-        // 2. Check if user just woke up from a long sleep/idle gap
-        if timeSinceLast > Double(settings.idleTimeoutSeconds) {
-            // Finalize any previous active work before the gap
-            if aggregator.hasEnoughData(minDurationSeconds: 60.0) {
-                await triggerBatchAnalysis()
+        // 2. Idle Monitor (user stepped away while screen was on)
+        let isIdle = idleMonitor.isUserIdle(timeoutSeconds: settings.idleTimeoutSeconds)
+        if isIdle {
+            if aggregator.hasAnyData() {
+                _ = await aggregator.finalizePreGapBatch(settings: settings)
+                loadCards(for: selectedDate)
             }
             lastCaptureTime = now
             return
+        }
+
+        // 3. Midnight Day Boundary Check (never leak yesterday's batch into today)
+        let calendar = Calendar.current
+        if !calendar.isDate(aggregator.currentBatchStartTime, inSameDayAs: now) {
+            print("[AppState] Midnight crossed. Finalizing previous day's batch.")
+            if aggregator.hasAnyData() {
+                _ = await aggregator.finalizeBatch(settings: settings)
+                loadCards(for: selectedDate)
+            } else {
+                aggregator.reset()
+            }
         }
 
         lastCaptureTime = now
 
-        // 3. Window context
+        // 4. Window context
         let context = windowTracker.getCurrentContext()
         self.currentWindowContext = context
 
         // Ignore lock screen, screensaver, loginwindow
         if windowTracker.isSystemLockOrScreensaver(context: context) {
-            if aggregator.hasEnoughData(minDurationSeconds: 60.0) {
-                await triggerBatchAnalysis()
+            if aggregator.hasAnyData() {
+                _ = await aggregator.finalizePreGapBatch(settings: settings)
+                loadCards(for: selectedDate)
             }
             return
         }

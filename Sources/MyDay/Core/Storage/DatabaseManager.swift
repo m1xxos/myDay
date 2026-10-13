@@ -233,9 +233,12 @@ public final class DatabaseManager: @unchecked Sendable {
 
         var consolidated: [TimelineCard] = []
         var mergedCount = 0
+        let calendar = Calendar.current
 
         for card in allCards {
-            if let last = consolidated.last, BatchAggregator.canStitchSessions(
+            if let last = consolidated.last,
+               calendar.isDate(last.startTime, inSameDayAs: card.startTime),
+               BatchAggregator.canStitchSessions(
                 lastCard: last,
                 currentStart: card.startTime,
                 currentEnd: card.endTime,
@@ -285,6 +288,51 @@ public final class DatabaseManager: @unchecked Sendable {
             }
         }
         return mergedCount
+    }
+
+    /// Scans database for any legacy cards that spanned across midnight or sleep gaps, and repairs them.
+    public func sanitizeAndFixCrossDayCards() -> Int {
+        let allCards = fetchAllCards(limit: 5000)
+        let calendar = Calendar.current
+        var fixedCount = 0
+
+        for var card in allCards {
+            var needsUpdate = false
+            let totalActiveSec = card.appUsages.reduce(0.0) { $0 + $1.durationSeconds }
+            let actualSpan = card.endTime.timeIntervalSince(card.startTime)
+
+            // Case 1: Card crosses midnight into another day
+            if !calendar.isDate(card.startTime, inSameDayAs: card.endTime) {
+                print("[DatabaseManager] Repairing cross-day card: '\(card.title)' from \(card.startTime) to \(card.endTime) (\(Int(actualSpan / 60)) min)")
+                let safeDuration = max(60.0, totalActiveSec > 0 ? totalActiveSec + 60.0 : 120.0)
+                let cappedEnd = card.startTime.addingTimeInterval(safeDuration)
+                let dayEnd = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: card.startTime) ?? cappedEnd
+                card.endTime = min(cappedEnd, dayEnd)
+                needsUpdate = true
+            }
+            // Case 2: Card exceeds 3 hours (abnormal continuous block / sleep gap)
+            else if actualSpan > 3 * 3600 {
+                print("[DatabaseManager] Repairing sleep-gap card: '\(card.title)' lasting \(Int(actualSpan / 60)) min with \(card.frameCount) frames")
+                let safeDuration = min(3600.0, max(120.0, Double(max(1, card.frameCount) * 90)))
+                card.endTime = card.startTime.addingTimeInterval(safeDuration)
+                for i in 0..<card.appUsages.count {
+                    if card.appUsages[i].durationSeconds > safeDuration {
+                        card.appUsages[i].durationSeconds = safeDuration / Double(max(1, card.appUsages.count))
+                    }
+                }
+                needsUpdate = true
+            }
+
+            if needsUpdate {
+                saveCard(card)
+                fixedCount += 1
+            }
+        }
+
+        if fixedCount > 0 {
+            print("[DatabaseManager] Sanitized and repaired \(fixedCount) corrupt cards.")
+        }
+        return fixedCount
     }
 
     private func parseCard(from stmt: OpaquePointer?) -> TimelineCard? {

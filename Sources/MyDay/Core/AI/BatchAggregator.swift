@@ -47,6 +47,28 @@ public final class BatchAggregator: @unchecked Sendable {
         lastRecordedTime = Date()
     }
 
+    public var currentBatchStartTime: Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return batchStartTime
+    }
+
+    public func hasAnyData() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !appUsages.isEmpty || !frames.isEmpty
+    }
+
+    public func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        let now = Date()
+        self.batchStartTime = now
+        self.appUsages = [:]
+        self.frames = []
+        self.lastRecordedTime = now
+    }
+
     public func hasEnoughData(minDurationSeconds: TimeInterval = 60.0) -> Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -54,13 +76,24 @@ public final class BatchAggregator: @unchecked Sendable {
         return elapsed >= minDurationSeconds && !appUsages.isEmpty
     }
 
+    public func finalizePreGapBatch(settings: UserSettings) async -> TimelineCard? {
+        return await finalizeBatch(settings: settings, isPreGap: true)
+    }
+
     public func finalizeBatch(
         settings: UserSettings,
-        forceImmediate: Bool = false
+        forceImmediate: Bool = false,
+        isPreGap: Bool = false
     ) async -> TimelineCard? {
-        let (currentStart, currentEnd, currentAppUsages, currentFrames) = snapshotAndReset()
+        let (currentStart, currentEnd, currentAppUsages, currentFrames) = snapshotAndReset(isPreGap: isPreGap)
 
         var appSlices = Array(currentAppUsages.values)
+        let totalActiveSeconds = appSlices.reduce(0.0) { $0 + $1.durationSeconds }
+
+        // If pre-gap batch has virtually no activity and no frames, discard it cleanly
+        if isPreGap && totalActiveSeconds < 15.0 && currentFrames.isEmpty {
+            return nil
+        }
         if appSlices.isEmpty {
             let ctx = WindowTracker.shared.getCurrentContext()
             appSlices = [AppUsageSlice(
@@ -71,11 +104,25 @@ public final class BatchAggregator: @unchecked Sendable {
             )]
         }
 
-        let totalActiveSeconds = appSlices.reduce(0.0) { $0 + $1.durationSeconds }
-        let duration = max(60, min(currentEnd.timeIntervalSince(currentStart), totalActiveSeconds + 120.0))
+        // HARD GUARDRAIL 1: Safe End Time. Never let wall-clock time stretch over idle/sleep gaps.
+        let maxAllowedSpan = max(60.0, totalActiveSeconds + 120.0)
+        var safeEnd = currentEnd
+        if safeEnd.timeIntervalSince(currentStart) > maxAllowedSpan {
+            safeEnd = currentStart.addingTimeInterval(maxAllowedSpan)
+        }
+
+        // HARD GUARDRAIL 2: NEVER cross midnight / different calendar days!
+        let calendar = Calendar.current
+        if !calendar.isDate(currentStart, inSameDayAs: safeEnd) {
+            if let endOfDay = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: currentStart) {
+                safeEnd = endOfDay
+            }
+        }
+
+        let duration = max(60.0, safeEnd.timeIntervalSince(currentStart))
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "HH:mm"
-        let rangeStr = "\(timeFormatter.string(from: currentStart)) – \(timeFormatter.string(from: currentEnd)) (\(max(1, Int(duration / 60))) min)"
+        let rangeStr = "\(timeFormatter.string(from: currentStart)) – \(timeFormatter.string(from: safeEnd)) (\(max(1, Int(duration / 60))) min)"
 
         // Pick best keyframe
         let keyframe = currentFrames.max(by: { $0.diffScore < $1.diffScore }) ?? currentFrames.last
@@ -142,7 +189,7 @@ public final class BatchAggregator: @unchecked Sendable {
             shouldStitch = Self.canStitchSessions(
                 lastCard: last,
                 currentStart: currentStart,
-                currentEnd: currentEnd,
+                currentEnd: safeEnd,
                 newTitle: cardTitle,
                 newCategory: cardCategory,
                 newApps: appSlices,
@@ -155,7 +202,7 @@ public final class BatchAggregator: @unchecked Sendable {
         if shouldStitch, var mergedCard = lastCard {
             print("[BatchAggregator] Stitching batch with previous session '\(mergedCard.title)' (ID: \(mergedCard.id))")
             // Update mergedCard with combined data
-            mergedCard.endTime = currentEnd
+            mergedCard.endTime = min(safeEnd, mergedCard.startTime.addingTimeInterval(3 * 3600))
             mergedCard.frameCount += currentFrames.count
             
             // If current card was analyzed by AI or has more descriptive title, keep best title
@@ -200,7 +247,7 @@ public final class BatchAggregator: @unchecked Sendable {
         } else {
             let card = TimelineCard(
                 startTime: currentStart,
-                endTime: currentEnd,
+                endTime: safeEnd,
                 title: cardTitle,
                 summary: cardSummary,
                 category: cardCategory,
@@ -218,12 +265,12 @@ public final class BatchAggregator: @unchecked Sendable {
         }
     }
 
-    private func snapshotAndReset() -> (Date, Date, [String: AppUsageSlice], [RecordedFrame]) {
+    private func snapshotAndReset(isPreGap: Bool = false) -> (Date, Date, [String: AppUsageSlice], [RecordedFrame]) {
         lock.lock()
         defer { lock.unlock() }
 
         let start = batchStartTime
-        let end = min(Date(), lastRecordedTime.addingTimeInterval(60.0))
+        let end = isPreGap ? lastRecordedTime : min(Date(), lastRecordedTime.addingTimeInterval(60.0))
         let usages = appUsages
         let recordedFrames = frames
 
@@ -254,6 +301,14 @@ public final class BatchAggregator: @unchecked Sendable {
         newApps: [AppUsageSlice],
         isAIContinuation: Bool
     ) -> Bool {
+        // 0. Calendar day check: MUST be on the exact same calendar day!
+        let calendar = Calendar.current
+        guard calendar.isDate(lastCard.startTime, inSameDayAs: currentStart) &&
+              calendar.isDate(lastCard.endTime, inSameDayAs: currentEnd) &&
+              calendar.isDate(currentStart, inSameDayAs: currentEnd) else {
+            return false
+        }
+
         // 1. Time gap check (must be within 15 minutes)
         let gap = currentStart.timeIntervalSince(lastCard.endTime)
         guard gap >= -60 && gap <= 15 * 60 else { return false }
