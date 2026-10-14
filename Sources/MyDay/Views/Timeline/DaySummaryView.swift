@@ -238,6 +238,85 @@ public struct DaySummaryView: View {
                         Divider()
                             .overlay(Color.white.opacity(0.06))
 
+                        // Section: Unfinished Tasks
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "checklist")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.orange)
+
+                                    Text("НЕЗАВЕРШЕННЫЕ ДЕЛА")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.secondary)
+                                        .tracking(0.5)
+                                }
+
+                                Spacer()
+
+                                if vm.isLoadingTasks {
+                                    HStack(spacing: 4) {
+                                        ProgressView()
+                                            .scaleEffect(0.6)
+                                        Text("Поиск...")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.secondary)
+                                    }
+                                } else if !vm.unfinishedTasks.isEmpty {
+                                    let remainingCount = vm.unfinishedTasks.filter { !$0.isCompleted }.count
+                                    Text("\(remainingCount) из \(vm.unfinishedTasks.count)")
+                                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.white.opacity(0.06))
+                                        .clipShape(Capsule())
+
+                                    // Copy checklist button
+                                    Button {
+                                        vm.copyTasksToMarkdown(date: appState.selectedDate)
+                                    } label: {
+                                        HStack(spacing: 3) {
+                                            Image(systemName: vm.copySuccessToast ? "checkmark" : "doc.on.doc")
+                                                .font(.system(size: 9))
+                                            Text(vm.copySuccessToast ? "Скопировано!" : "Скопировать")
+                                                .font(.system(size: 10, weight: .medium))
+                                        }
+                                        .foregroundColor(vm.copySuccessToast ? .green : .secondary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(Color.white.opacity(0.05))
+                                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Скопировать чеклист в Markdown для Obsidian, Things или Todoist")
+                                }
+                            }
+
+                            if vm.unfinishedTasks.isEmpty {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green.opacity(0.8))
+                                        .font(.system(size: 14))
+                                    Text("Все начатые дела за день завершены 👍")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.vertical, 6)
+                            } else {
+                                VStack(spacing: 6) {
+                                    ForEach(vm.unfinishedTasks) { task in
+                                        UnfinishedTaskRowView(task: task) {
+                                            vm.toggleTaskCompletion(id: task.id)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider()
+                            .overlay(Color.white.opacity(0.06))
+
                         // Section: Top Apps
                         if !vm.topApps.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
@@ -297,10 +376,63 @@ public struct DaySummaryView: View {
         }
         .frame(minWidth: 1040, idealWidth: 1120, maxWidth: 1300, minHeight: 640, idealHeight: 700, maxHeight: 850)
         .onAppear {
-            vm.loadSummary(cards: appState.cards)
+            vm.loadSummary(cards: appState.cards, date: appState.selectedDate, appState: appState)
         }
         .onDisappear {
             vm.cleanup()
         }
     }
 }
+
+public struct UnfinishedTaskRowView: View {
+    let task: UnfinishedTask
+    let onToggle: () -> Void
+
+    public init(task: UnfinishedTask, onToggle: @escaping () -> Void) {
+        self.task = task
+        self.onToggle = onToggle
+    }
+
+    public var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            // Checkbox button
+            Button(action: onToggle) {
+                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(task.isCompleted ? .green : .secondary.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+
+            // Task title
+            Text(task.title)
+                .font(.system(size: 12, weight: task.isCompleted ? .regular : .medium))
+                .strikethrough(task.isCompleted)
+                .foregroundColor(task.isCompleted ? .secondary.opacity(0.6) : .primary)
+                .lineLimit(2)
+
+            Spacer()
+
+            // App icon & subtle name badge
+            HStack(spacing: 4) {
+                AppIconView(appName: task.appName, size: 12)
+                Text(task.appName)
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(task.isCompleted ? Color.white.opacity(0.02) : Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(task.isCompleted ? Color.white.opacity(0.03) : Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+

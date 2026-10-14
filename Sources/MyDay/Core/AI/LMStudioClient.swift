@@ -169,4 +169,92 @@ public final class LMStudioClient: @unchecked Sendable {
 
         throw NSError(domain: "LMStudioClient", code: -3, userInfo: [NSLocalizedDescriptionKey: "Could not parse JSON: \(text)"])
     }
+
+    // MARK: - Unfinished Tasks Extraction
+
+    public func extractUnfinishedTasks(
+        baseURL: String = "http://127.0.0.1:1234/v1",
+        model: String,
+        cards: [TimelineCard]
+    ) async throws -> [UnfinishedTask] {
+        guard !cards.isEmpty else { return [] }
+        guard let url = URL(string: "\(baseURL)/chat/completions") else {
+            throw URLError(.badURL)
+        }
+
+        let userPrompt = PromptTemplates.buildUnfinishedTasksPrompt(cards: cards)
+        let messages: [[String: Any]] = [
+            ["role": "system", "content": PromptTemplates.systemPrompt],
+            ["role": "user", "content": userPrompt]
+        ]
+
+        let body: [String: Any] = [
+            "model": model,
+            "messages": messages,
+            "temperature": 0.2,
+            "max_tokens": 500
+        ]
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            let bodyStr = String(data: data, encoding: .utf8) ?? "unknown"
+            throw NSError(domain: "LMStudioClient", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: "Server response error: \(bodyStr)"])
+        }
+
+        struct ChatResponse: Codable {
+            struct Choice: Codable {
+                struct Message: Codable {
+                    let content: String?
+                }
+                let message: Message
+            }
+            let choices: [Choice]
+        }
+
+        let chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
+        guard let rawContent = chatResponse.choices.first?.message.content else {
+            throw NSError(domain: "LMStudioClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "No content in model response"])
+        }
+
+        let cleaned = cleanJSONString(rawContent)
+        guard let jsonData = cleaned.data(using: .utf8) else {
+            throw NSError(domain: "LMStudioClient", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to convert string to JSON data"])
+        }
+
+        do {
+            let parsed = try JSONDecoder().decode(AIUnfinishedTasksResponse.self, from: jsonData)
+            return parsed.tasks.compactMap { item in
+                let trimmed = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return UnfinishedTask(
+                    title: trimmed,
+                    appName: item.app_name.isEmpty ? "Mac" : item.app_name,
+                    category: ActivityCategory.match(from: item.category)
+                )
+            }
+        } catch {
+            // Loose JSON fallback
+            if let dict = (try? JSONSerialization.jsonObject(with: jsonData)) as? [String: Any],
+               let taskList = dict["tasks"] as? [[String: Any]] {
+                return taskList.compactMap { dictItem in
+                    let title = (dictItem["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !title.isEmpty else { return nil }
+                    let app = dictItem["app_name"] as? String ?? "Mac"
+                    let cat = dictItem["category"] as? String ?? "Other"
+                    return UnfinishedTask(
+                        title: title,
+                        appName: app,
+                        category: ActivityCategory.match(from: cat)
+                    )
+                }
+            }
+            throw error
+        }
+    }
 }
+

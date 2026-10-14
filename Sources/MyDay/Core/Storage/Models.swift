@@ -301,3 +301,27 @@ public struct UserSettings: Codable, Sendable {
     }
 }
 
+// MARK: - Unfinished Tasks
+
+public struct UnfinishedTask: Identifiable, Codable, Equatable, Sendable {
+    public let id: UUID
+    public var title: String
+    public var appName: String
+    public var category: ActivityCategory
+    public var isCompleted: Bool
+
+    public init(
+        id: UUID = UUID(),
+        title: String,
+        appName: String,
+        category: ActivityCategory = .other,
+        isCompleted: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.appName = appName
+        self.category = category
+        self.isCompleted = isCompleted
+    }
+}
+

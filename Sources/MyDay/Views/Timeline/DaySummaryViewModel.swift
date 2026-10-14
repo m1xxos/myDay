@@ -28,14 +28,23 @@ public final class DaySummaryViewModel: ObservableObject {
     @Published public var categoryStats: [DayCategoryStat] = []
     @Published public var topApps: [DayAppStat] = []
     @Published public var totalVideoFrames: Int = 0
+    @Published public var unfinishedTasks: [UnfinishedTask] = []
+    @Published public var isLoadingTasks: Bool = false
+    @Published public var copySuccessToast: Bool = false
     
+    private var currentDateKey: String = ""
+
     public init() {}
     
-    public func loadSummary(cards: [TimelineCard]) {
+    public func loadSummary(cards: [TimelineCard], date: Date, appState: AppState) {
         self.totalCardsCount = cards.count
         self.totalDuration = cards.reduce(0.0) { $0 + $1.duration }
         self.totalFramesCount = cards.reduce(0) { $0 + $1.frameCount }
         
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        self.currentDateKey = df.string(from: date)
+
         // 1. Calculate Category Distribution
         var categoryDurations: [ActivityCategory: TimeInterval] = [:]
         for card in cards {
@@ -74,9 +83,112 @@ public final class DaySummaryViewModel: ObservableObject {
                 percentage: (item.duration / totalAppTime) * 100.0
             )
         }.sorted { $0.duration > $1.duration }
+
+        // 3. Load or Extract Unfinished Tasks
+        loadUnfinishedTasks(cards: cards, dateKey: self.currentDateKey, appState: appState)
         
-        // 3. Compile Day Timelapse Video in background
+        // 4. Compile Day Timelapse Video in background
         compileVideo(cards: cards)
+    }
+
+    private func loadUnfinishedTasks(cards: [TimelineCard], dateKey: String, appState: AppState) {
+        guard !cards.isEmpty else {
+            self.unfinishedTasks = []
+            return
+        }
+
+        let userDefaultsKey = "myday_unfinished_tasks_\(dateKey)"
+
+        // A. Check persisted tasks first
+        if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
+           let saved = try? JSONDecoder().decode([UnfinishedTask].self, from: data),
+           !saved.isEmpty {
+            self.unfinishedTasks = saved
+            return
+        }
+
+        // B. Instant local heuristic extraction (0ms latency fallback)
+        let heuristicTasks = UnfinishedTasksExtractor.shared.extractTasks(from: cards)
+        self.unfinishedTasks = heuristicTasks
+        saveTasks(heuristicTasks, dateKey: dateKey)
+
+        // C. Asynchronous AI extraction if LM Studio is connected
+        if appState.isLMStudioConnected && appState.settings.autoAnalyze {
+            self.isLoadingTasks = true
+            Task {
+                do {
+                    let aiTasks = try await LMStudioClient.shared.extractUnfinishedTasks(
+                        baseURL: appState.settings.lmStudioEndpoint,
+                        model: appState.settings.selectedModel,
+                        cards: cards
+                    )
+
+                    await MainActor.run {
+                        self.isLoadingTasks = false
+                        if !aiTasks.isEmpty {
+                            // Preserve completion checkmarks if user already checked off items
+                            var merged: [UnfinishedTask] = []
+                            for var aiTask in aiTasks {
+                                if let existing = self.unfinishedTasks.first(where: { $0.title.lowercased() == aiTask.title.lowercased() }) {
+                                    aiTask.isCompleted = existing.isCompleted
+                                }
+                                merged.append(aiTask)
+                            }
+                            self.unfinishedTasks = merged
+                            self.saveTasks(merged, dateKey: dateKey)
+                        }
+                    }
+                } catch {
+                    print("[DaySummary] AI task extraction error: \(error.localizedDescription)")
+                    await MainActor.run {
+                        self.isLoadingTasks = false
+                    }
+                }
+            }
+        }
+    }
+
+    public func toggleTaskCompletion(id: UUID) {
+        if let index = unfinishedTasks.firstIndex(where: { $0.id == id }) {
+            unfinishedTasks[index].isCompleted.toggle()
+            saveTasks(unfinishedTasks, dateKey: currentDateKey)
+        }
+    }
+
+    public func refreshTasks(cards: [TimelineCard], appState: AppState) {
+        UserDefaults.standard.removeObject(forKey: "myday_unfinished_tasks_\(currentDateKey)")
+        loadUnfinishedTasks(cards: cards, dateKey: currentDateKey, appState: appState)
+    }
+
+    public func copyTasksToMarkdown(date: Date) {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ru_RU")
+        df.dateFormat = "d MMMM yyyy"
+        let dateStr = df.string(from: date)
+
+        var md = "## Незавершенные дела за \(dateStr)\n\n"
+        for task in unfinishedTasks {
+            let check = task.isCompleted ? "[x]" : "[ ]"
+            md += "- \(check) \(task.title) (\(task.appName))\n"
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(md, forType: .string)
+
+        self.copySuccessToast = true
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run {
+                self.copySuccessToast = false
+            }
+        }
+    }
+
+    private func saveTasks(_ tasks: [UnfinishedTask], dateKey: String) {
+        guard !dateKey.isEmpty else { return }
+        if let encoded = try? JSONEncoder().encode(tasks) {
+            UserDefaults.standard.set(encoded, forKey: "myday_unfinished_tasks_\(dateKey)")
+        }
     }
     
     private func compileVideo(cards: [TimelineCard]) {

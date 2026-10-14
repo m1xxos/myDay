@@ -70,28 +70,57 @@ public enum PromptTemplates {
         return text
     }
 
-    public static func buildDaySummaryPrompt(cards: [TimelineCard]) -> String {
-        var text = "You are a helpful assistant writing an end-of-day summary. The user worked on the following activities today:\n\n"
+    public static func buildUnfinishedTasksPrompt(cards: [TimelineCard]) -> String {
+        var text = """
+        You are an automated task manager assistant.
+        Analyze the user's computer activity for today and identify actionable UNFINISHED tasks (things the user started, researched, drafted, coded, or left in-progress, but didn't conclude).
+
+        CRITICAL REQUIREMENTS:
+        - Output strictly 3 to 6 distinct, actionable tasks.
+        - Each task title MUST be concise and formatted as a task manager to-do item (4 to 8 words maximum, starting with an action verb, e.g. 'Дописать рефакторинг WindowTracker', 'Завершить заказ на OZON', 'Разобрать входящие в Gmail').
+        - Language: Russian.
+        - Do NOT write long explanations, narrative, or full sentences. Keep it clean like Todoist or Things.
+
+        Today's activity timeline:
+
+        """
+
         for (i, card) in cards.enumerated() {
-            text += "\(i+1). [\(card.category.displayName)] \(card.title)\n"
-            if !card.summary.isEmpty {
-                text += "   - \(card.summary)\n"
+            let appNames = card.appUsages.map { $0.appName }.joined(separator: ", ")
+            let topTitles = card.appUsages.flatMap { $0.windowTitles }.prefix(3).joined(separator: " | ")
+            text += "\(i+1). [\(card.category.displayName)] \(card.title) (Apps: \(appNames))\n"
+            if !topTitles.isEmpty {
+                text += "   Windows: \(topTitles)\n"
             }
         }
-        text += """
 
-        Write a cohesive, structured 2-3 paragraph markdown summary of how the day went, highlighting major focuses, completed tasks, and general themes.
-        Keep it concise, friendly, and in the language the user mostly used in the titles (likely Russian).
+        text += """
 
         Output schema (strictly valid JSON):
         {
-          "is_continuation": false,
-          "title": "Итоги дня",
-          "summary": "Your beautiful markdown text summary goes here. Use \\n for newlines.",
-          "category": "Other",
-          "tags": ["summary"]
+          "tasks": [
+            {
+              "title": "Concise task title (4-8 words in Russian)",
+              "app_name": "App name (e.g. Zen, Xcode, Warp, Obsidian)",
+              "category": "Development | Writing | Research | Communication | Design | Entertainment | Utility | Other"
+            }
+          ]
         }
         """
         return text
     }
 }
+
+public struct AIUnfinishedTasksResponse: Codable, Sendable {
+    public struct TaskItem: Codable, Sendable {
+        public let title: String
+        public let app_name: String
+        public let category: String
+    }
+    public let tasks: [TaskItem]
+
+    public init(tasks: [TaskItem]) {
+        self.tasks = tasks
+    }
+}
+

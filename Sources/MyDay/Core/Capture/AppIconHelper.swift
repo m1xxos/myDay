@@ -49,7 +49,7 @@ public struct AppIconView: View {
     let appName: String
     var size: CGFloat = 16
 
-    public init(bundleId: String, appName: String, size: CGFloat = 16) {
+    public init(bundleId: String = "", appName: String, size: CGFloat = 16) {
         self.bundleId = bundleId
         self.appName = appName
         self.size = size
