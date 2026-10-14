@@ -8,3 +8,4 @@ DerivedData/
 .netrc
 MyDay.app
 *.sqlite*
+*.zip
