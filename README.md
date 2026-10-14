@@ -33,6 +33,10 @@ Instead of sending constant full-resolution screenshots to heavy cloud models, M
 ## ✨ Features
 
 - 🎨 **Linear & Raycast Aesthetic**: Sleek obsidian dark glassmorphism (`.ultraThinMaterial`), border gradients, and typography designed specifically for macOS.
+- 🙈 **Automated Incognito & Private Window Exclusion**: Completely halts recording, captures zero screenshots, and records zero titles or URLs whenever private browsing is active across all major browsers (Zen, Safari, Chrome, Arc, Brave, Firefox, Edge, Opera, Tor, etc.).
+- 📋 **Automated Unfinished Daily Tasks**: Day summary automatically detects started but unfinished tasks and formats them as a clean, actionable task-manager checklist with interactive checkmarks and 1-click Markdown export (Things, Obsidian, Apple Reminders, Todoist).
+- 🎬 **Full-Day 60fps Timelapse & Donut Analytics**: Full day summary view featuring an ultra-smooth 60fps movie compilation alongside a segmented category time distribution donut chart and top apps breakdown.
+- 🧩 **Multi-Tier Timeline Session Stitching**: Intelligently consolidates fragmented 5–10 minute activity slices into unified, cohesive working sessions while protecting against overnight sleep gaps.
 - 🖼️ **Native Retina App Icons**: Real application icons extracted directly from macOS via `NSWorkspace` for all active windows (Xcode, Warp, Safari, Figma, Telegram, etc.).
 - ⏱️ **Visual 24-Hour Day Grid**: Interactive hourly activity overview (`00:00 – 23:59`) with category-colored slots.
 - 📅 **Custom Date Navigator & Popover**: Minimalist date switcher with quick jump chips (*Сегодня*, *Вчера*, *-7 дней*) and activity indicator dots on days with recorded sessions.
@@ -89,6 +93,10 @@ flowchart TD
 
 ## 🚀 Getting Started
 
+### 📦 Download Prebuilt App
+
+Download `MyDay-v0.1.0-macOS.zip` from [GitHub Releases](https://github.com/m1xxos/myDay/releases/latest), unzip, and move `MyDay.app` into your `/Applications` folder.
+
 ### Prerequisites
 
 1. **macOS 14.0 (Sonoma)** or later (Apple Silicon recommended).
@@ -97,7 +105,7 @@ flowchart TD
    - Load a model (recommended: `qwen3-vl-4b-instruct`, `llama-3.2-3b-instruct`, or any lightweight vision/text instruct model).
    - Start the **Local Inference Server** on port `1234` (`http://127.0.0.1:1234`).
 
-### Quick Start (Build & Run)
+### Build from Source
 
 ```bash
 # 1. Clone repository
@@ -125,10 +133,13 @@ Open **Настройки** (Settings) via the gear icon in the sidebar or menu 
 | :--- | :--- | :--- |
 | **LM Studio URL** | `http://127.0.0.1:1234/v1` | Local OpenAI-compatible API endpoint |
 | **Active Model** | Auto-detected | Selects loaded model from LM Studio |
+| **Analysis Mode** | `Text-First` | Text-first OCR or Vision-assisted multimodal analysis |
 | **Capture Interval** | `20 sec` | Time between display state evaluations |
-| **Diff Threshold** | `5.0%` | Minimum visual delta to save a new keyframe |
+| **Diff Threshold** | `2.5%` | Minimum visual delta to save a new keyframe |
 | **Batch Duration** | `10 min` | Frequency of local LLM summarization calls |
 | **Idle Timeout** | `120 sec` | Suspends recording when no mouse/keyboard input |
+| **Exclude Private Browsing** | `Enabled` | Automatically pauses recording on incognito windows |
+| **Retention Days** | `7 days` | Automatic purge threshold for old raw frames |
 
 ---
 
@@ -146,7 +157,7 @@ myDay/
 │   ├── App/
 │   │   └── AppState.swift          # MainActor state coordinator & capture loop
 │   ├── Core/
-│   │   ├── AI/                     # LM Studio client & prompt templates
+│   │   ├── AI/                     # LM Studio client, heuristic extractor & prompts
 │   │   ├── Capture/                # ScreenCaptureKit, differencing & window tracker
 │   │   ├── Vision/                 # Apple Neural Engine OCR (Vision framework)
 │   │   ├── Timelapse/              # Hardware H.264 compiler (AVFoundation)
@@ -155,7 +166,7 @@ myDay/
 │   └── Views/
 │       ├── MainView.swift          # Root layout with fixed 260px sidebar & hidden titlebar
 │       ├── SidebarView.swift       # Dark glass sidebar, metrics, categories & LM Studio status
-│       ├── Timeline/               # Feed, 24h ActivityGridView, DateNavigator & Scrubber
+│       ├── Timeline/               # Feed, DaySummary, 24h ActivityGridView, DateNavigator & Scrubber
 │       ├── MenuBar/                # Native macOS MenuBarExtra companion
 │       └── Settings/               # Preferences window
 └── Tests/MyDayTests/               # Core engine unit tests
