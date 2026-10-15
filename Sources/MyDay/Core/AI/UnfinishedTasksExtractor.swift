@@ -90,6 +90,16 @@ public final class UnfinishedTasksExtractor: @unchecked Sendable {
                     } else if title.contains("Курс") || title.contains("Практикум") || title.contains("Stepik") {
                         addTask(title: "Продолжить прохождение курса в \(app)", appName: app, category: .research)
                     }
+
+                    // G. Remote Desktop / Windows App
+                    else if WindowTracker.isRemoteDesktopOrVM(appName: app, bundleId: usage.bundleId) {
+                        if !card.ocrKeywords.isEmpty {
+                            let kw = card.ocrKeywords.prefix(2).joined(separator: " / ")
+                            addTask(title: "Завершить задачи в Windows App (\(kw))", appName: app, category: card.category)
+                        } else if !card.title.starts(with: "Работа в ") {
+                            addTask(title: "Завершить задачу в Windows App: \(card.title)", appName: app, category: card.category)
+                        }
+                    }
                 }
             }
         }

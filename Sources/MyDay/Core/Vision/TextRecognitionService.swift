@@ -14,7 +14,7 @@ public final class TextRecognitionService: @unchecked Sendable {
     }
 
     /// Recognizes text from a CGImage using Apple Vision Framework (runs on Apple Neural Engine).
-    public func recognizeText(from image: CGImage, maxLines: Int = 15) async -> RecognitionResult {
+    public func recognizeText(from image: CGImage, maxLines: Int = 30) async -> RecognitionResult {
         return await withCheckedContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 guard error == nil, let observations = request.results as? [VNRecognizedTextObservation] else {
@@ -25,8 +25,12 @@ public final class TextRecognitionService: @unchecked Sendable {
                 var lines: [String] = []
                 for observation in observations {
                     if let candidate = observation.topCandidates(1).first {
-                        let text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if text.count > 3 && !Self.isCommonUINoise(text) {
+                        var text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                        // Strip leading bullet artifacts
+                        while text.hasPrefix("•") || text.hasPrefix("·") || text.hasPrefix("-") || text.hasPrefix("*") {
+                            text = text.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                        if text.count >= 3 && !Self.isCommonUINoise(text) {
                             lines.append(text)
                         }
                     }
@@ -43,9 +47,9 @@ public final class TextRecognitionService: @unchecked Sendable {
                 ))
             }
 
-            request.recognitionLevel = .fast
-            request.usesLanguageCorrection = false
-            request.recognitionLanguages = ["en-US", "ru-RU"]
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            request.recognitionLanguages = ["ru-RU", "en-US"]
 
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
             DispatchQueue.global(qos: .userInitiated).async {
@@ -61,27 +65,36 @@ public final class TextRecognitionService: @unchecked Sendable {
     private static func isCommonUINoise(_ text: String) -> Bool {
         let lowered = text.lowercased()
         let noiseList = [
-            "file edit view", "window help", "am", "pm", "wifi", "battery",
-            "bluetooth", "control center", "spotlight", "finder", "safari file",
-            "bookmark", "history", "develop", "tab", "close"
+            "file edit view", "window help", "control center", "spotlight",
+            "bookmark", "history", "develop", "close window"
         ]
         return noiseList.contains(where: { lowered.hasPrefix($0) })
     }
 
-    private static func extractKeywords(from lines: [String], maxCount: Int = 12) -> [String] {
+    private static func extractKeywords(from lines: [String], maxCount: Int = 18) -> [String] {
         var wordCounts: [String: Int] = [:]
         let stopWords: Set<String> = [
             "the", "and", "for", "with", "that", "this", "from", "have", "are",
-            "was", "were", "will", "your", "what", "which", "about", "into",
-            "или", "для", "как", "что", "это", "при", "все", "так", "если"
+            "was", "were", "will", "your", "what", "which", "about", "into", "there",
+            "their", "then", "them", "these", "other", "some", "more",
+            "или", "для", "как", "что", "это", "при", "все", "так", "если",
+            "было", "быть", "когда", "где", "тоже", "только", "после", "через",
+            "очень", "своих", "этом", "этой", "того", "этих", "были", "свой"
         ]
 
         for line in lines {
             let tokens = line.components(separatedBy: CharacterSet.alphanumerics.inverted)
             for token in tokens {
                 let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.count >= 4 && !stopWords.contains(trimmed.lowercased()) {
-                    wordCounts[trimmed, default: 0] += 1
+                if trimmed.count >= 3 && !stopWords.contains(trimmed.lowercased()) {
+                    // Normalize token casing
+                    let displayToken: String
+                    if trimmed.uppercased() == trimmed {
+                        displayToken = trimmed // e.g. SQL, API, WAB, ERP
+                    } else {
+                        displayToken = trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+                    }
+                    wordCounts[displayToken, default: 0] += 1
                 }
             }
         }

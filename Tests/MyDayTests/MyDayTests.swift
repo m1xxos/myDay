@@ -178,4 +178,57 @@ struct MyDayTests {
             print("Live LM Studio test skipped or failed: \(error)")
         }
     }
+
+    // MARK: - Remote Desktop & OCR Category Tests
+
+    @Test("Remote Desktop & Virtual Machine identification")
+    func testRemoteDesktopDetection() throws {
+        #expect(WindowTracker.isRemoteDesktopOrVM(appName: "Windows App", bundleId: "com.microsoft.rdc.macos"))
+        #expect(WindowTracker.isRemoteDesktopOrVM(appName: "Microsoft Remote Desktop", bundleId: "com.microsoft.rdc.application-client"))
+        #expect(WindowTracker.isRemoteDesktopOrVM(appName: "AnyDesk", bundleId: "com.philandro.anydesk"))
+        #expect(WindowTracker.isRemoteDesktopOrVM(appName: "Parallels Desktop", bundleId: "com.parallels.desktop.console"))
+        #expect(WindowTracker.isRemoteDesktopOrVM(appName: "Citrix Workspace", bundleId: "com.citrix.receiver.icaviewer.mac"))
+        #expect(!WindowTracker.isRemoteDesktopOrVM(appName: "Safari", bundleId: "com.apple.Safari"))
+        #expect(!WindowTracker.isRemoteDesktopOrVM(appName: "Xcode", bundleId: "com.apple.dt.Xcode"))
+    }
+
+    @Test("OCR-assisted ActivityCategory classification for remote sessions")
+    func testRemoteDesktopCategoryMatching() throws {
+        // Windows App with code keywords
+        let catDev = ActivityCategory.match(from: "Windows App", ocrKeywords: ["SQL", "Query", "SELECT", "Code"])
+        #expect(catDev == .development)
+
+        // Windows App with document/report keywords
+        let catWrite = ActivityCategory.match(from: "Windows App", ocrKeywords: ["Excel", "Отчет", "Таблица"])
+        #expect(catWrite == .writing)
+
+        // Windows App with server administration keywords
+        let catUtil = ActivityCategory.match(from: "Windows App", ocrKeywords: ["Server", "PowerShell", "Admin"])
+        #expect(catUtil == .utility)
+
+        // Windows App without keywords defaults to development (productive work) instead of Other
+        let catDefault = ActivityCategory.match(from: "Windows App", ocrKeywords: [])
+        #expect(catDefault == .development)
+    }
+
+    @Test("UnfinishedTasksExtractor extracts actionable items for remote sessions")
+    func testUnfinishedTasksExtractorRemote() throws {
+        let extractor = UnfinishedTasksExtractor.shared
+        let card = TimelineCard(
+            startTime: Date(timeIntervalSince1970: 1700000000),
+            endTime: Date(timeIntervalSince1970: 1700001800),
+            title: "Работа в Windows App",
+            summary: "Удаленная сессия",
+            category: .development,
+            tags: ["windows app", "rdp"],
+            appUsages: [
+                AppUsageSlice(appName: "Windows App", bundleId: "com.microsoft.rdc.macos", durationSeconds: 1500, windowTitles: ["wab2.bspb.ru"])
+            ],
+            ocrKeywords: ["GeekHub", "Вебинар", "API"]
+        )
+
+        let tasks = extractor.extractTasks(from: [card])
+        #expect(!tasks.isEmpty)
+        #expect(tasks.contains(where: { $0.appName == "Windows App" }))
+    }
 }

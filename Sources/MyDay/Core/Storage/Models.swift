@@ -51,15 +51,17 @@ public enum ActivityCategory: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    public static func match(from string: String) -> ActivityCategory {
+    public static func match(from string: String, ocrKeywords: [String] = []) -> ActivityCategory {
         let lowered = string.lowercased()
-        if lowered.contains("dev") || lowered.contains("code") || lowered.contains("разработ") || lowered.contains("program") {
+
+        // 1. Direct string match
+        if lowered.contains("dev") || lowered.contains("code") || lowered.contains("разработ") || lowered.contains("program") || lowered.contains("xcode") || lowered.contains("terminal") || lowered.contains("warp") || lowered.contains("studio") {
             return .development
-        } else if lowered.contains("writ") || lowered.contains("text") || lowered.contains("документ") || lowered.contains("note") {
+        } else if lowered.contains("writ") || lowered.contains("text") || lowered.contains("документ") || lowered.contains("note") || lowered.contains("obsidian") || lowered.contains("notion") {
             return .writing
-        } else if lowered.contains("research") || lowered.contains("brows") || lowered.contains("исслед") || lowered.contains("search") || lowered.contains("safari") || lowered.contains("chrome") || lowered.contains("arc") || lowered.contains("firefox") {
+        } else if lowered.contains("research") || lowered.contains("brows") || lowered.contains("исслед") || lowered.contains("search") || lowered.contains("safari") || lowered.contains("chrome") || lowered.contains("arc") || lowered.contains("firefox") || lowered.contains("zen") {
             return .research
-        } else if lowered.contains("commun") || lowered.contains("chat") || lowered.contains("сообщ") || lowered.contains("slack") || lowered.contains("telegram") {
+        } else if lowered.contains("commun") || lowered.contains("chat") || lowered.contains("сообщ") || lowered.contains("slack") || lowered.contains("telegram") || lowered.contains("vk") || lowered.contains("mail") {
             return .communication
         } else if lowered.contains("design") || lowered.contains("figma") || lowered.contains("дизайн") {
             return .design
@@ -68,6 +70,29 @@ public enum ActivityCategory: String, Codable, CaseIterable, Sendable {
         } else if lowered.contains("util") || lowered.contains("system") || lowered.contains("систем") {
             return .utility
         }
+
+        // 2. If app or title is remote desktop or generic, inspect on-screen OCR keywords
+        if !ocrKeywords.isEmpty {
+            let joinedOCR = ocrKeywords.joined(separator: " ").lowercased()
+            if joinedOCR.contains("code") || joinedOCR.contains("sql") || joinedOCR.contains("api") || joinedOCR.contains("git") || joinedOCR.contains("dev") || joinedOCR.contains("func") || joinedOCR.contains("class") || joinedOCR.contains("build") || joinedOCR.contains("error") || joinedOCR.contains("debug") || joinedOCR.contains("studio") {
+                return .development
+            }
+            if joinedOCR.contains("doc") || joinedOCR.contains("excel") || joinedOCR.contains("отчет") || joinedOCR.contains("таблиц") || joinedOCR.contains("документ") || joinedOCR.contains("word") {
+                return .writing
+            }
+            if joinedOCR.contains("server") || joinedOCR.contains("admin") || joinedOCR.contains("сервер") || joinedOCR.contains("терминал") || joinedOCR.contains("cmd") || joinedOCR.contains("powershell") {
+                return .utility
+            }
+            if joinedOCR.contains("call") || joinedOCR.contains("видеозвонок") || joinedOCR.contains("звонки") || joinedOCR.contains("чат") || joinedOCR.contains("клиенты") {
+                return .communication
+            }
+        }
+
+        // Remote desktop default is development/work rather than generic other
+        if lowered.contains("windows app") || lowered.contains("remote desktop") || lowered.contains("rdp") {
+            return .development
+        }
+
         return .other
     }
 }

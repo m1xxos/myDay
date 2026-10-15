@@ -148,21 +148,99 @@ public struct DaySummaryView: View {
             // Main Stage: Large Video Stage (Left) & Rich Stats Sidebar (Right)
             HStack(spacing: 0) {
                 // Large Video Player Stage
-                ZStack {
+                ZStack(alignment: .bottom) {
                     Color.black.ignoresSafeArea()
 
                     if let player = vm.videoPlayer {
                         NativePlayerView(player: player)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        // Floating Video Control Bar
+                        HStack(spacing: 12) {
+                            Button {
+                                vm.togglePlayPause()
+                            } label: {
+                                Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 26, height: 26)
+                                    .background(Color.white.opacity(0.15))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                vm.restartVideo()
+                            } label: {
+                                Image(systemName: "backward.end.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .frame(width: 24, height: 24)
+                                    .background(Color.white.opacity(0.1))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Divider()
+                                .frame(height: 14)
+                                .overlay(Color.white.opacity(0.2))
+
+                            // Playback Rate Selector
+                            HStack(spacing: 6) {
+                                Image(systemName: "speedometer")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.6))
+
+                                Text("Скорость:")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.7))
+
+                                ForEach([0.5, 1.0, 2.0], id: \.self) { speed in
+                                    let isSelected = vm.playbackRate == Float(speed)
+                                    Button {
+                                        vm.setPlaybackRate(Float(speed))
+                                    } label: {
+                                        Text(speed == 1.0 ? "1x (10 fps)" : (speed == 0.5 ? "0.5x" : "2x"))
+                                            .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(isSelected ? Color.accentColor : Color.white.opacity(0.12))
+                                            .foregroundColor(isSelected ? .white : .white.opacity(0.85))
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+
+                            Spacer()
+
+                            if vm.totalVideoFrames > 0 {
+                                Text("\(vm.totalVideoFrames) кадров")
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.black.opacity(0.7))
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                        .padding(14)
                     } else if vm.isGeneratingVideo {
                         VStack(spacing: 12) {
                             ProgressView()
                                 .scaleEffect(1.2)
-                            Text("Сборка 60fps таймлапса дня...")
+                            Text("Сборка таймлапса дня...")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.white)
                             if vm.totalVideoFrames > 0 {
-                                Text("Объединяю \(vm.totalVideoFrames) кадров в единый фильм")
+                                Text("Объединяю \(vm.totalVideoFrames) кадров в плавный таймлапс")
                                     .font(.system(size: 11))
                                     .foregroundColor(.white.opacity(0.6))
                             }

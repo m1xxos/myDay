@@ -20,7 +20,7 @@ public final class TimelapseStorage: @unchecked Sendable {
         return framesDir
     }
 
-    public func saveFrame(image: CGImage, timestamp: Date = Date(), maxWidth: CGFloat = 1280) -> String? {
+    public func saveFrame(image: CGImage, timestamp: Date = Date(), maxWidth: CGFloat = 1920) -> String? {
         let dayString = dateFormatter.string(from: timestamp)
         let dayDir = baseFramesDirectory.appendingPathComponent(dayString, isDirectory: true)
 

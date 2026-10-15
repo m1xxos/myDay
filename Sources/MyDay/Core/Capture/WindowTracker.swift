@@ -55,6 +55,39 @@ public final class WindowTracker: @unchecked Sendable {
         return isPrivateBrowsing(appName: context.appName, bundleId: context.bundleId, windowTitle: context.windowTitle)
     }
 
+    public static func isRemoteDesktopOrVM(appName: String, bundleId: String) -> Bool {
+        let lowerBundle = bundleId.lowercased()
+        let lowerApp = appName.lowercased()
+
+        let knownBundles: Set<String> = [
+            "com.microsoft.rdc.macos",
+            "com.microsoft.rdc.application-client",
+            "com.citrix.receiver.icaviewer.mac",
+            "com.vmware.fusion",
+            "com.parallels.desktop.console",
+            "com.lemonmocha.royaltsx",
+            "com.philandro.anydesk",
+            "com.carriez.rustdesk",
+            "com.teamviewer.teamviewer",
+            "com.realvnc.vncviewer",
+            "com.apple.screensharing"
+        ]
+        if knownBundles.contains(lowerBundle) { return true }
+
+        return lowerApp.contains("windows app") ||
+               lowerApp.contains("remote desktop") ||
+               lowerApp.contains("rdp") ||
+               lowerApp.contains("citrix") ||
+               lowerApp.contains("parallels") ||
+               lowerApp.contains("vmware") ||
+               lowerApp.contains("anydesk") ||
+               lowerApp.contains("rustdesk") ||
+               lowerApp.contains("teamviewer") ||
+               lowerApp.contains("vnc") ||
+               lowerApp.contains("screen sharing") ||
+               lowerApp.contains("virtualbox")
+    }
+
     public func isPrivateBrowsing(appName: String, bundleId: String, windowTitle: String) -> Bool {
         let lowerBundle = bundleId.lowercased()
         let lowerApp = appName.lowercased()

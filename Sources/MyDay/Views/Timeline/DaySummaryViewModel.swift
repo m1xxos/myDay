@@ -31,10 +31,40 @@ public final class DaySummaryViewModel: ObservableObject {
     @Published public var unfinishedTasks: [UnfinishedTask] = []
     @Published public var isLoadingTasks: Bool = false
     @Published public var copySuccessToast: Bool = false
+    @Published public var playbackRate: Float = 1.0 // 0.5x (5fps), 1.0x (10fps), 2.0x (20fps)
+    @Published public var isPlaying: Bool = true
     
     private var currentDateKey: String = ""
+    private var loopObserver: NSObjectProtocol? = nil
 
     public init() {}
+
+    public func setPlaybackRate(_ rate: Float) {
+        self.playbackRate = rate
+        self.videoPlayer?.rate = rate
+        self.isPlaying = (rate > 0)
+    }
+
+    public func togglePlayPause() {
+        guard let p = videoPlayer else { return }
+        if isPlaying {
+            p.pause()
+            isPlaying = false
+        } else {
+            p.play()
+            p.rate = playbackRate
+            isPlaying = true
+        }
+    }
+
+    public func restartVideo() {
+        guard let p = videoPlayer else { return }
+        let rate = self.playbackRate
+        p.seek(to: .zero)
+        p.play()
+        p.rate = rate
+        self.isPlaying = true
+    }
     
     public func loadSummary(cards: [TimelineCard], date: Date, appState: AppState) {
         self.totalCardsCount = cards.count
@@ -217,13 +247,34 @@ public final class DaySummaryViewModel: ObservableObject {
             let outURL = tempDir.appendingPathComponent("day_timelapse_\(UUID().uuidString).mp4")
             
             do {
-                // 60 fps for fast day summary video
-                let videoURL = try await TimelapseGenerator.shared.generateTimelapseVideo(frameURLs: allFrames, outputURL: outURL, fps: 60)
+                // 10 fps default for readable, smooth keyframe timelapse playback
+                let videoURL = try await TimelapseGenerator.shared.generateTimelapseVideo(frameURLs: allFrames, outputURL: outURL, fps: 10)
                 let p = AVPlayer(url: videoURL)
                 await MainActor.run {
                     self.videoPlayer = p
                     self.isGeneratingVideo = false
+                    self.isPlaying = true
+
+                    if let obs = self.loopObserver {
+                        NotificationCenter.default.removeObserver(obs)
+                        self.loopObserver = nil
+                    }
+
+                    let currentRate = self.playbackRate
+                    // Auto-loop day timelapse
+                    self.loopObserver = NotificationCenter.default.addObserver(
+                        forName: .AVPlayerItemDidPlayToEndTime,
+                        object: p.currentItem,
+                        queue: .main
+                    ) { [weak p] _ in
+                        guard let p = p else { return }
+                        p.seek(to: .zero)
+                        p.play()
+                        p.rate = currentRate
+                    }
+
                     p.play()
+                    p.rate = self.playbackRate
                 }
             } catch {
                 print("[DaySummary] Video error: \(error)")
@@ -235,6 +286,10 @@ public final class DaySummaryViewModel: ObservableObject {
     }
     
     public func cleanup() {
+        if let obs = loopObserver {
+            NotificationCenter.default.removeObserver(obs)
+            loopObserver = nil
+        }
         self.videoPlayer?.pause()
         self.videoPlayer = nil
     }

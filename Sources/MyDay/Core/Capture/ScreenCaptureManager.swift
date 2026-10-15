@@ -43,7 +43,7 @@ public final class ScreenCaptureManager: @unchecked Sendable {
     }
 
     /// Captures the main active display as CGImage.
-    public func captureMainDisplay(maxWidth: Int = 1440) async -> CGImage? {
+    public func captureMainDisplay(maxWidth: Int = 2560) async -> CGImage? {
         // First try modern ScreenCaptureKit
         if #available(macOS 14.0, *) {
             do {

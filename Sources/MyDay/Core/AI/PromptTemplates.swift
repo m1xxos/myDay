@@ -42,17 +42,31 @@ public enum PromptTemplates {
         for usage in appUsages.sorted(by: { $0.durationSeconds > $1.durationSeconds }) {
             let minutes = max(1, Int(usage.durationSeconds / 60))
             let titles = usage.windowTitles.prefix(3).joined(separator: " | ")
-            text += "- \(usage.appName) (\(minutes)m): \(titles.isEmpty ? "Active" : titles)\n"
+            let isRDP = WindowTracker.isRemoteDesktopOrVM(appName: usage.appName, bundleId: usage.bundleId)
+            let annotation = isRDP ? " [УДАЛЕННЫЙ РАБОЧИЙ СТОЛ / REMOTE PC]" : ""
+            text += "- \(usage.appName)\(annotation) (\(minutes)m): \(titles.isEmpty ? "Active" : titles)\n"
         }
 
         if !ocrKeywords.isEmpty {
-            text += "\nOn-Screen Keywords (extracted via local OCR):\n"
+            text += "\nOn-Screen Keywords (extracted via local OCR from primary workspace):\n"
             text += ocrKeywords.joined(separator: ", ") + "\n"
         }
 
         if !keyTextLines.isEmpty {
             text += "\nVisible On-Screen Content Excerpt:\n"
-            text += keyTextLines.prefix(6).joined(separator: "\n") + "\n"
+            text += keyTextLines.prefix(10).joined(separator: "\n") + "\n"
+        }
+
+        let hasRemoteWork = appUsages.contains { WindowTracker.isRemoteDesktopOrVM(appName: $0.appName, bundleId: $0.bundleId) }
+        if hasRemoteWork {
+            text += """
+
+            ВАЖНЫЕ ИНСТРУКЦИИ ДЛЯ УДАЛЕННЫХ СТОЛОВ (Windows App / RDP):
+            - Если пользователь проводит большую часть времени в Windows App (удаленка), заголовок окна в macOS (напр. wab2.bspb.ru) является лишь адресом сервера.
+            - Определи реальную деятельность пользователя (разработка, администрирование, работа с документами/данными, задачи) ПО КЛЮЧЕВЫМ СЛОВАМ OCR И ВИДИМОМУ ТЕКСТУ ВНУТРИ УДАЛЕНКИ.
+            - НЕ присваивай активность второстепенным фоновым приложениям (мессенджерам вроде VK WorkSpace, Telegram), если основное время проведено в Windows App!
+
+            """
         }
 
         text += """
@@ -91,6 +105,9 @@ public enum PromptTemplates {
             text += "\(i+1). [\(card.category.displayName)] \(card.title) (Apps: \(appNames))\n"
             if !topTitles.isEmpty {
                 text += "   Windows: \(topTitles)\n"
+            }
+            if !card.ocrKeywords.isEmpty {
+                text += "   Keywords: \(card.ocrKeywords.prefix(6).joined(separator: ", "))\n"
             }
         }
 

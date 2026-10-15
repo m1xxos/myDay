@@ -128,23 +128,55 @@ public final class BatchAggregator: @unchecked Sendable {
         timeFormatter.dateFormat = "HH:mm"
         let rangeStr = "\(timeFormatter.string(from: currentStart)) – \(timeFormatter.string(from: safeEnd)) (\(max(1, Int(duration / 60))) min)"
 
-        // Pick best keyframe
-        let keyframe = currentFrames.max(by: { $0.diffScore < $1.diffScore }) ?? currentFrames.last
+        // 1. Identify dominant app and check if it is remote desktop/VM
+        let sortedApps = appSlices.sorted(by: { $0.durationSeconds > $1.durationSeconds })
+        let primaryAppSlice = sortedApps.first
+        let primaryApp = primaryAppSlice?.appName ?? "Mac"
+        let isPrimaryRemote = WindowTracker.isRemoteDesktopOrVM(appName: primaryApp, bundleId: primaryAppSlice?.bundleId ?? "")
+
+        // 2. Select keyframe: prioritize frames belonging to the dominant app (especially if remote desktop)
+        let dominantFrames = currentFrames.filter { $0.appName == primaryApp }
+        let keyframe: RecordedFrame?
+        if !dominantFrames.isEmpty {
+            keyframe = dominantFrames.max(by: { $0.diffScore < $1.diffScore }) ?? dominantFrames.last
+        } else {
+            keyframe = currentFrames.max(by: { $0.diffScore < $1.diffScore }) ?? currentFrames.last
+        }
+
         var ocrKeywords: [String] = []
         var keyTextLines: [String] = []
 
-        // Run Apple Neural Engine OCR locally on keyframe if available
-        if let keyframe = keyframe, let cgImage = loadCGImage(from: keyframe.filePath) {
-            let ocrResult = await TextRecognitionService.shared.recognizeText(from: cgImage)
-            ocrKeywords = ocrResult.keywords
-            keyTextLines = ocrResult.keyLines
+        // Multi-frame OCR: prioritize dominant app frames to extract deep context
+        var framesToOcr: [RecordedFrame] = []
+        if let kf = keyframe {
+            framesToOcr.append(kf)
+        }
+        if isPrimaryRemote && dominantFrames.count > 1 {
+            // Also sample another frame from remote session (e.g. earlier distinct frame)
+            if let secondFrame = dominantFrames.first(where: { $0.filePath != keyframe?.filePath }) {
+                framesToOcr.append(secondFrame)
+            }
         }
 
-        let primaryApp = appSlices.max(by: { $0.durationSeconds < $1.durationSeconds })?.appName ?? "Mac"
+        for frame in framesToOcr {
+            if let cgImage = loadCGImage(from: frame.filePath) {
+                let ocrResult = await TextRecognitionService.shared.recognizeText(from: cgImage)
+                for kw in ocrResult.keywords {
+                    if !ocrKeywords.contains(kw) && ocrKeywords.count < 20 {
+                        ocrKeywords.append(kw)
+                    }
+                }
+                for line in ocrResult.keyLines {
+                    if !keyTextLines.contains(line) && keyTextLines.count < 25 {
+                        keyTextLines.append(line)
+                    }
+                }
+            }
+        }
 
         var cardTitle = "Работа в \(primaryApp)"
         var cardSummary = "Сессия активности в приложениях: " + appSlices.map { $0.appName }.joined(separator: ", ")
-        var cardCategory = ActivityCategory.match(from: primaryApp)
+        var cardCategory = ActivityCategory.match(from: primaryApp, ocrKeywords: ocrKeywords)
         var cardTags: [String] = [primaryApp.lowercased()]
         var isAnalyzed = false
         var isContinuationAI = false
@@ -178,7 +210,7 @@ public final class BatchAggregator: @unchecked Sendable {
 
                 cardTitle = aiResponse.title
                 cardSummary = aiResponse.summary
-                cardCategory = ActivityCategory.match(from: aiResponse.category)
+                cardCategory = ActivityCategory.match(from: aiResponse.category, ocrKeywords: ocrKeywords)
                 cardTags = aiResponse.tags
                 isContinuationAI = aiResponse.is_continuation
                 isAnalyzed = true
@@ -209,13 +241,13 @@ public final class BatchAggregator: @unchecked Sendable {
             mergedCard.endTime = min(safeEnd, mergedCard.startTime.addingTimeInterval(3 * 3600))
             mergedCard.frameCount += currentFrames.count
             
-            // If current card was analyzed by AI or has more descriptive title, keep best title
+            // If current card was analyzed by AI or has more descriptive title, update title & category
             if isAnalyzed {
-                if !mergedCard.isAIAnalyzed || mergedCard.title.starts(with: "Работа в ") {
+                if !mergedCard.isAIAnalyzed || mergedCard.title.starts(with: "Работа в ") || isPrimaryRemote {
                     mergedCard.title = cardTitle
+                    mergedCard.category = cardCategory
                 }
                 mergedCard.isAIAnalyzed = true
-                // Update summary with latest insight if provided
                 if !cardSummary.isEmpty && cardSummary != mergedCard.summary {
                     mergedCard.summary = cardSummary
                 }
@@ -243,8 +275,17 @@ public final class BatchAggregator: @unchecked Sendable {
                     mergedCard.tags.append(tag)
                 }
             }
+
+            // Merge OCR keywords
+            for kw in ocrKeywords {
+                if !mergedCard.ocrKeywords.contains(kw) {
+                    mergedCard.ocrKeywords.append(kw)
+                }
+            }
             
-            mergedCard.keyframePath = keyframe?.filePath ?? mergedCard.keyframePath
+            if let kf = keyframe {
+                mergedCard.keyframePath = kf.filePath
+            }
             
             DatabaseManager.shared.saveCard(mergedCard)
             return mergedCard
