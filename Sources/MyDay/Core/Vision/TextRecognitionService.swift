@@ -15,51 +15,47 @@ public final class TextRecognitionService: @unchecked Sendable {
 
     /// Recognizes text from a CGImage using Apple Vision Framework (runs on Apple Neural Engine).
     public func recognizeText(from image: CGImage, maxLines: Int = 30) async -> RecognitionResult {
-        return await withCheckedContinuation { continuation in
-            let request = VNRecognizeTextRequest { request, error in
-                guard error == nil, let observations = request.results as? [VNRecognizedTextObservation] else {
-                    continuation.resume(returning: RecognitionResult(fullText: "", keyLines: [], keywords: []))
-                    return
-                }
-
-                var lines: [String] = []
-                for observation in observations {
-                    if let candidate = observation.topCandidates(1).first {
-                        var text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
-                        // Strip leading bullet artifacts
-                        while text.hasPrefix("•") || text.hasPrefix("·") || text.hasPrefix("-") || text.hasPrefix("*") {
-                            text = text.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
-                        }
-                        if text.count >= 3 && !Self.isCommonUINoise(text) {
-                            lines.append(text)
-                        }
-                    }
-                }
-
-                let keyLines = Array(lines.prefix(maxLines))
-                let fullText = keyLines.joined(separator: "\n")
-                let keywords = Self.extractKeywords(from: lines)
-
-                continuation.resume(returning: RecognitionResult(
-                    fullText: fullText,
-                    keyLines: keyLines,
-                    keywords: keywords
-                ))
-            }
-
+        return await Task.detached(priority: .userInitiated) {
+            let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
             request.recognitionLanguages = ["ru-RU", "en-US"]
 
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try handler.perform([request])
-                } catch {
-                    continuation.resume(returning: RecognitionResult(fullText: "", keyLines: [], keywords: []))
+            do {
+                try handler.perform([request])
+            } catch {
+                return RecognitionResult(fullText: "", keyLines: [], keywords: [])
+            }
+
+            guard let observations = request.results else {
+                return RecognitionResult(fullText: "", keyLines: [], keywords: [])
+            }
+
+            var lines: [String] = []
+            for observation in observations {
+                if let candidate = observation.topCandidates(1).first {
+                    var text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Strip leading bullet artifacts
+                    while text.hasPrefix("•") || text.hasPrefix("·") || text.hasPrefix("-") || text.hasPrefix("*") {
+                        text = text.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    if text.count >= 3 && !Self.isCommonUINoise(text) {
+                        lines.append(text)
+                    }
                 }
             }
-        }
+
+            let keyLines = Array(lines.prefix(maxLines))
+            let fullText = keyLines.joined(separator: "\n")
+            let keywords = Self.extractKeywords(from: lines)
+
+            return RecognitionResult(
+                fullText: fullText,
+                keyLines: keyLines,
+                keywords: keywords
+            )
+        }.value
     }
 
     private static func isCommonUINoise(_ text: String) -> Bool {

@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import AppKit
+import ImageIO
 
 public final class BatchAggregator: @unchecked Sendable {
     public static let shared = BatchAggregator()
@@ -330,9 +331,9 @@ public final class BatchAggregator: @unchecked Sendable {
     }
 
     private func loadCGImage(from path: String) -> CGImage? {
-        guard let image = NSImage(contentsOfFile: path) else { return nil }
-        var rect = NSRect(origin: .zero, size: image.size)
-        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        let url = URL(fileURLWithPath: path)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 
     // MARK: - Multi-Tier Deterministic Stitching Heuristics
