@@ -49,6 +49,29 @@ public final class DateNavigatorViewModel: ObservableObject {
         refreshActiveDays()
     }
 
+    public func displayDateString(for date: Date) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ru_RU")
+
+        if calendar.isDateInToday(date) {
+            df.dateFormat = "d MMM"
+            let str = df.string(from: date).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return "Сегодня, \(str)"
+        } else if calendar.isDateInYesterday(date) {
+            df.dateFormat = "d MMM"
+            let str = df.string(from: date).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return "Вчера, \(str)"
+        } else {
+            df.dateFormat = "d MMM"
+            let dateStr = df.string(from: date).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            let weekdayDf = DateFormatter()
+            weekdayDf.locale = Locale(identifier: "ru_RU")
+            weekdayDf.dateFormat = "EE"
+            let weekdayStr = weekdayDf.string(from: date).capitalized.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return "\(dateStr), \(weekdayStr)"
+        }
+    }
+
     public func formattedDateLabel(for date: Date) -> (prefix: String, text: String) {
         if calendar.isDateInToday(date) {
             let df = DateFormatter()
@@ -149,7 +172,7 @@ public struct DateNavigatorView: View {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.secondary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: 24, height: 26)
                     .background(Color.white.opacity(0.04))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(
@@ -166,27 +189,23 @@ public struct DateNavigatorView: View {
                 vm.refreshActiveDays()
                 vm.isPopoverOpen.toggle()
             } label: {
-                let formatted = vm.formattedDateLabel(for: appState.selectedDate)
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Image(systemName: "calendar")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.accentColor)
 
-                    HStack(spacing: 4) {
-                        Text(formatted.prefix)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundColor(.primary)
-
-                        Text(formatted.text)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(.secondary)
-                    }
+                    Text(vm.displayDateString(for: appState.selectedDate))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
                     Image(systemName: "chevron.down")
                         .font(.system(size: 7, weight: .bold))
                         .foregroundColor(.secondary.opacity(0.7))
                 }
-                .padding(.horizontal, 9)
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity)
                 .frame(height: 26)
                 .background(Color.white.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -194,33 +213,15 @@ public struct DateNavigatorView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(
                             vm.isPopoverOpen
-                                ? Color.accentColor.opacity(0.5)
+                                ? Color.accentColor.opacity(0.6)
                                 : Color.white.opacity(0.08),
                             lineWidth: 1
                         )
                 )
             }
             .buttonStyle(.plain)
-            .overlay(alignment: .top) {
-                if vm.isPopoverOpen {
-                    datePopoverContent
-                        .padding(14)
-                        .background(
-                            ZStack {
-                                Color(NSColor.windowBackgroundColor).opacity(0.95)
-                                Rectangle().fill(.ultraThinMaterial)
-                            }
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.4), radius: 15, x: 0, y: 8)
-                        .offset(y: 34)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-                        .zIndex(100)
-                }
+            .popover(isPresented: $vm.isPopoverOpen, arrowEdge: .bottom) {
+                datePopoverContent
             }
 
             // Next Day Button
@@ -230,7 +231,7 @@ public struct DateNavigatorView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.secondary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: 24, height: 26)
                     .background(Color.white.opacity(0.04))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(
@@ -241,26 +242,29 @@ public struct DateNavigatorView: View {
             .buttonStyle(.plain)
             .help("Следующий день")
 
-            Spacer()
-
             // Jump to Today Pill if not currently on today
             if !Calendar.current.isDateInToday(appState.selectedDate) {
                 Button {
                     vm.jumpToToday(appState: appState)
                 } label: {
-                    Text("Сегодня")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.accentColor)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.12))
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
-                        )
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 8, weight: .bold))
+                        Text("Сегодня")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .padding(.horizontal, 6)
+                    .frame(height: 26)
+                    .background(Color.accentColor.opacity(0.12))
+                    .foregroundColor(.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+                    )
                 }
                 .buttonStyle(.plain)
+                .help("Вернуться к сегодняшнему дню")
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }
@@ -292,7 +296,7 @@ public struct DateNavigatorView: View {
             }
 
             Divider()
-                .opacity(0.4)
+                .overlay(Color.white.opacity(0.12))
 
             // Month Navigator Header
             HStack {
@@ -301,8 +305,9 @@ public struct DateNavigatorView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 10, weight: .bold))
-                        .frame(width: 22, height: 22)
-                        .background(Color.white.opacity(0.04))
+                        .foregroundColor(.white.opacity(0.85))
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.08))
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -311,7 +316,7 @@ public struct DateNavigatorView: View {
 
                 Text(vm.monthTitle(for: vm.displayedMonth))
                     .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
+                    .foregroundColor(.white)
 
                 Spacer()
 
@@ -320,8 +325,9 @@ public struct DateNavigatorView: View {
                 } label: {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .bold))
-                        .frame(width: 22, height: 22)
-                        .background(Color.white.opacity(0.04))
+                        .foregroundColor(.white.opacity(0.85))
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.08))
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -333,7 +339,7 @@ public struct DateNavigatorView: View {
                 ForEach(weekdays, id: \.self) { day in
                     Text(day)
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.55))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -346,21 +352,30 @@ public struct DateNavigatorView: View {
                 }
             }
         }
+        .padding(14)
         .frame(width: 270)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(red: 0.12, green: 0.12, blue: 0.14))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
     }
 
     private func quickChip(title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 8)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.85))
+                .padding(.horizontal, 9)
                 .padding(.vertical, 4)
-                .background(Color.white.opacity(0.06))
+                .background(Color.white.opacity(0.08))
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -376,7 +391,7 @@ public struct DateNavigatorView: View {
                     .foregroundColor(
                         slot.isSelected
                             ? .white
-                            : (slot.isCurrentMonth ? (slot.isToday ? .accentColor : .primary) : .secondary.opacity(0.3))
+                            : (slot.isCurrentMonth ? (slot.isToday ? .accentColor : .white) : .white.opacity(0.25))
                     )
 
                 // Activity dot indicator
@@ -405,7 +420,7 @@ public struct DateNavigatorView: View {
                             .shadow(color: Color.accentColor.opacity(0.4), radius: 4, x: 0, y: 1)
                     } else if slot.isToday {
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
+                            .stroke(Color.accentColor.opacity(0.6), lineWidth: 1)
                     } else {
                         Color.clear
                     }
