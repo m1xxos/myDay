@@ -14,6 +14,31 @@ public struct AIActivityResponse: Codable, Sendable {
         self.category = category
         self.tags = tags
     }
+
+    enum CodingKeys: String, CodingKey {
+        case is_continuation
+        case title
+        case summary
+        case category
+        case tags
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.is_continuation = try container.decodeIfPresent(Bool.self, forKey: .is_continuation) ?? false
+        self.title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Activity"
+
+        if let singleSummary = try? container.decode(String.self, forKey: .summary) {
+            self.summary = singleSummary
+        } else if let summaryArray = try? container.decode([String].self, forKey: .summary) {
+            self.summary = summaryArray.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n• ")
+        } else {
+            self.summary = ""
+        }
+
+        self.category = try container.decodeIfPresent(String.self, forKey: .category) ?? "Other"
+        self.tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+    }
 }
 
 public enum PromptTemplates {

@@ -158,7 +158,12 @@ public final class LMStudioClient: @unchecked Sendable {
         if let dict = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] {
             let isCont = dict["is_continuation"] as? Bool ?? false
             let title = dict["title"] as? String ?? "Activity"
-            var summary = (dict["summary"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            var summary = ""
+            if let str = dict["summary"] as? String {
+                summary = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if let arr = dict["summary"] as? [String] {
+                summary = arr.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n• ")
+            }
             if summary.isEmpty {
                 summary = "Активность: \(title)"
             }
