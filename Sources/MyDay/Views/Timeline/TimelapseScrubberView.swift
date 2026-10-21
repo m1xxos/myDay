@@ -8,24 +8,29 @@ import AppKit
 
 public struct NativePlayerView: NSViewRepresentable {
     public let player: AVPlayer
+    public var controlsStyle: AVPlayerViewControlsStyle
 
-    public init(player: AVPlayer) {
+    public init(player: AVPlayer, controlsStyle: AVPlayerViewControlsStyle = .none) {
         self.player = player
+        self.controlsStyle = controlsStyle
     }
 
     public func makeNSView(context: Context) -> AVPlayerView {
         let playerView = AVPlayerView()
         playerView.player = player
-        playerView.controlsStyle = .inline
-        playerView.showsFullScreenToggleButton = true
-        playerView.showsSharingServiceButton = true
-        playerView.showsFrameSteppingButtons = true
+        playerView.controlsStyle = controlsStyle
+        playerView.showsFullScreenToggleButton = (controlsStyle != .none)
+        playerView.showsSharingServiceButton = (controlsStyle != .none)
+        playerView.showsFrameSteppingButtons = (controlsStyle != .none)
         return playerView
     }
 
     public func updateNSView(_ nsView: AVPlayerView, context: Context) {
         if nsView.player != player {
             nsView.player = player
+        }
+        if nsView.controlsStyle != controlsStyle {
+            nsView.controlsStyle = controlsStyle
         }
     }
 }
@@ -373,7 +378,7 @@ public struct TimelapseScrubberView: View {
                     .background(Color(NSColor.windowBackgroundColor))
                     .overlay(Divider(), alignment: .bottom)
 
-                    NativePlayerView(player: player)
+                    NativePlayerView(player: player, controlsStyle: .inline)
                         .frame(width: 760, height: 480)
                 }
                 .frame(width: 760, height: 536)

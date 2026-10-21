@@ -33,9 +33,24 @@ public final class DaySummaryViewModel: ObservableObject {
     @Published public var copySuccessToast: Bool = false
     @Published public var playbackRate: Float = 1.0 // 0.5x (5fps), 1.0x (10fps), 2.0x (20fps)
     @Published public var isPlaying: Bool = true
+    @Published public var currentTime: Double = 0.0
+    @Published public var videoDuration: Double = 0.0
     
     private var currentDateKey: String = ""
     private var loopObserver: NSObjectProtocol? = nil
+    private var timeObserverToken: Any? = nil
+
+    public var progress: Double {
+        guard videoDuration > 0 else { return 0 }
+        return min(max(currentTime / videoDuration, 0), 1)
+    }
+
+    public func formatTime(_ seconds: Double) -> String {
+        let s = Int(seconds.rounded(.down))
+        let mins = max(0, s / 60)
+        let secs = max(0, s % 60)
+        return String(format: "%02d:%02d", mins, secs)
+    }
 
     public init() {}
 
@@ -64,6 +79,21 @@ public final class DaySummaryViewModel: ObservableObject {
         p.play()
         p.rate = rate
         self.isPlaying = true
+    }
+
+    public func seek(to seconds: Double) {
+        guard let p = videoPlayer else { return }
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        let rate = isPlaying ? self.playbackRate : 0
+        self.currentTime = seconds
+        p.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                if rate > 0 {
+                    p.rate = rate
+                }
+                self?.currentTime = seconds
+            }
+        }
     }
     
     public func loadSummary(cards: [TimelineCard], date: Date, appState: AppState) {
@@ -275,6 +305,7 @@ public final class DaySummaryViewModel: ObservableObject {
 
                     p.play()
                     p.rate = self.playbackRate
+                    self.setupTimeObserver(for: p)
                 }
             } catch {
                 print("[DaySummary] Video error: \(error)")
@@ -284,14 +315,39 @@ public final class DaySummaryViewModel: ObservableObject {
             }
         }
     }
+
+    private func setupTimeObserver(for player: AVPlayer) {
+        if let token = timeObserverToken {
+            self.videoPlayer?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+
+        let interval = CMTime(seconds: 0.05, preferredTimescale: 600)
+        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
+            guard let self = self, let p = player else { return }
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.currentTime = time.seconds
+                if let duration = p.currentItem?.duration.seconds, !duration.isNaN && duration > 0 {
+                    self.videoDuration = duration
+                }
+            }
+        }
+    }
     
     public func cleanup() {
+        if let token = timeObserverToken {
+            self.videoPlayer?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
         if let obs = loopObserver {
             NotificationCenter.default.removeObserver(obs)
             loopObserver = nil
         }
         self.videoPlayer?.pause()
         self.videoPlayer = nil
+        self.currentTime = 0.0
+        self.videoDuration = 0.0
     }
     
     public static func formatDuration(_ duration: TimeInterval) -> String {

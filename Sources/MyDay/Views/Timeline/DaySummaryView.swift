@@ -152,85 +152,140 @@ public struct DaySummaryView: View {
                     Color.black.ignoresSafeArea()
 
                     if let player = vm.videoPlayer {
-                        NativePlayerView(player: player)
+                        NativePlayerView(player: player, controlsStyle: .none)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                         // Floating Video Control Bar
-                        HStack(spacing: 12) {
-                            Button {
-                                vm.togglePlayPause()
-                            } label: {
-                                Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 26, height: 26)
-                                    .background(Color.white.opacity(0.15))
-                                    .clipShape(Circle())
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                vm.restartVideo()
-                            } label: {
-                                Image(systemName: "backward.end.fill")
-                                    .font(.system(size: 10, weight: .semibold))
+                        VStack(spacing: 8) {
+                            // Scrubber Track & Times
+                            HStack(spacing: 10) {
+                                Text(vm.formatTime(vm.currentTime))
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                     .foregroundColor(.white.opacity(0.85))
-                                    .frame(width: 24, height: 24)
-                                    .background(Color.white.opacity(0.1))
-                                    .clipShape(Circle())
-                            }
-                            .buttonStyle(.plain)
 
-                            Divider()
-                                .frame(height: 14)
-                                .overlay(Color.white.opacity(0.2))
+                                GeometryReader { geo in
+                                    let width = geo.size.width
+                                    let progress = CGFloat(vm.progress)
+                                    ZStack(alignment: .leading) {
+                                        // Track background
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.2))
+                                            .frame(height: 4)
 
-                            // Playback Rate Selector
-                            HStack(spacing: 6) {
-                                Image(systemName: "speedometer")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.6))
+                                        // Filled track
+                                        Capsule()
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [Color.accentColor, Color.purple],
+                                                    startPoint: .leading,
+                                                    endPoint: .trailing
+                                                )
+                                            )
+                                            .frame(width: max(0, min(width, width * progress)), height: 4)
 
-                                Text("Скорость:")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.7))
-
-                                ForEach([0.5, 1.0, 2.0], id: \.self) { speed in
-                                    let isSelected = vm.playbackRate == Float(speed)
-                                    Button {
-                                        vm.setPlaybackRate(Float(speed))
-                                    } label: {
-                                        Text(speed == 1.0 ? "1x (10 fps)" : (speed == 0.5 ? "0.5x" : "2x"))
-                                            .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 3)
-                                            .background(isSelected ? Color.accentColor : Color.white.opacity(0.12))
-                                            .foregroundColor(isSelected ? .white : .white.opacity(0.85))
-                                            .clipShape(Capsule())
+                                        // Thumb
+                                        Circle()
+                                            .fill(Color.white)
+                                            .frame(width: 10, height: 10)
+                                            .shadow(color: Color.black.opacity(0.4), radius: 2)
+                                            .offset(x: max(0, min(width - 10, (width - 10) * progress)))
                                     }
-                                    .buttonStyle(.plain)
+                                    .frame(height: 14)
+                                    .contentShape(Rectangle())
+                                    .gesture(
+                                        DragGesture(minimumDistance: 0)
+                                            .onChanged { value in
+                                                let pct = max(0.0, min(1.0, Double(value.location.x / width)))
+                                                vm.seek(to: pct * vm.videoDuration)
+                                            }
+                                    )
+                                }
+                                .frame(height: 14)
+
+                                Text(vm.formatTime(vm.videoDuration))
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.55))
+                            }
+
+                            // Transport Controls & Speed
+                            HStack(spacing: 12) {
+                                Button {
+                                    vm.togglePlayPause()
+                                } label: {
+                                    Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.white.opacity(0.18))
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    vm.restartVideo()
+                                } label: {
+                                    Image(systemName: "backward.end.fill")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.white.opacity(0.85))
+                                        .frame(width: 24, height: 24)
+                                        .background(Color.white.opacity(0.1))
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .help("Начать сначала")
+
+                                Divider()
+                                    .frame(height: 14)
+                                    .overlay(Color.white.opacity(0.2))
+
+                                // Playback Rate Selector
+                                HStack(spacing: 6) {
+                                    Image(systemName: "speedometer")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.white.opacity(0.6))
+
+                                    Text("Скорость:")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.7))
+
+                                    ForEach([0.5, 1.0, 2.0], id: \.self) { speed in
+                                        let isSelected = vm.playbackRate == Float(speed)
+                                        Button {
+                                            vm.setPlaybackRate(Float(speed))
+                                        } label: {
+                                            Text(speed == 1.0 ? "1x (10 fps)" : (speed == 0.5 ? "0.5x" : "2x"))
+                                                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 3)
+                                                .background(isSelected ? Color.accentColor : Color.white.opacity(0.12))
+                                                .foregroundColor(isSelected ? .white : .white.opacity(0.85))
+                                                .clipShape(Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+
+                                Spacer()
+
+                                if vm.totalVideoFrames > 0 {
+                                    Text("\(vm.totalVideoFrames) кадров")
+                                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                        .foregroundColor(.white.opacity(0.5))
                                 }
                             }
-
-                            Spacer()
-
-                            if vm.totalVideoFrames > 0 {
-                                Text("\(vm.totalVideoFrames) кадров")
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
                         .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.black.opacity(0.7))
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(red: 0.1, green: 0.1, blue: 0.12).opacity(0.92))
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
                         )
+                        .shadow(color: Color.black.opacity(0.4), radius: 10, y: 4)
                         .padding(14)
                     } else if vm.isGeneratingVideo {
                         VStack(spacing: 12) {
