@@ -178,6 +178,10 @@ public final class BatchAggregator: @unchecked Sendable {
         var cardTitle = "Работа в \(primaryApp)"
         var cardSummary = "Сессия активности в приложениях: " + appSlices.map { $0.appName }.joined(separator: ", ")
         var cardCategory = ActivityCategory.match(from: primaryApp, ocrKeywords: ocrKeywords)
+        let isPrimaryRDP = WindowTracker.isRemoteDesktopOrVM(appName: primaryApp, bundleId: appSlices.first?.bundleId ?? "")
+        if isPrimaryRDP && (cardCategory == .utility || cardCategory == .other) {
+            cardCategory = .work
+        }
         var cardTags: [String] = [primaryApp.lowercased()]
         var isAnalyzed = false
         var isContinuationAI = false
@@ -212,6 +216,9 @@ public final class BatchAggregator: @unchecked Sendable {
                 cardTitle = aiResponse.title
                 cardSummary = aiResponse.summary
                 cardCategory = ActivityCategory.match(from: aiResponse.category, ocrKeywords: ocrKeywords)
+                if isPrimaryRDP && (cardCategory == .utility || cardCategory == .other) {
+                    cardCategory = .work
+                }
                 cardTags = aiResponse.tags
                 isContinuationAI = aiResponse.is_continuation
                 isAnalyzed = true

@@ -105,7 +105,7 @@ public final class UnfinishedTasksExtractor: @unchecked Sendable {
         }
 
         // 2. If we still need more tasks, synthesize actionable items from recent substantive work cards
-        let substantiveCategories: Set<ActivityCategory> = [.development, .writing, .research, .design, .utility]
+        let substantiveCategories: Set<ActivityCategory> = [.work, .development, .writing, .research, .design, .utility]
 
         for card in reversedCards where substantiveCategories.contains(card.category) {
             if tasks.count >= 5 { break }
@@ -154,6 +154,8 @@ public final class UnfinishedTasksExtractor: @unchecked Sendable {
         }
 
         switch category {
+        case .work:
+            return "Завершить рабочую задачу: \(clean)"
         case .development:
             return "Завершить разработку: \(clean)"
         case .writing:

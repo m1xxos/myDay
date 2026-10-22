@@ -202,13 +202,13 @@ struct MyDayTests {
         let catWrite = ActivityCategory.match(from: "Windows App", ocrKeywords: ["Excel", "Отчет", "Таблица"])
         #expect(catWrite == .writing)
 
-        // Windows App with server administration keywords
-        let catUtil = ActivityCategory.match(from: "Windows App", ocrKeywords: ["Server", "PowerShell", "Admin"])
-        #expect(catUtil == .utility)
+        // Windows App with server administration keywords -> .work (NEVER .utility / "Система")
+        let catWork = ActivityCategory.match(from: "Windows App", ocrKeywords: ["Server", "PowerShell", "Admin"])
+        #expect(catWork == .work)
 
-        // Windows App without keywords defaults to development (productive work) instead of Other
+        // Windows App without keywords defaults to Work (productive work) instead of Utility or Other
         let catDefault = ActivityCategory.match(from: "Windows App", ocrKeywords: [])
-        #expect(catDefault == .development)
+        #expect(catDefault == .work)
     }
 
     @Test("UnfinishedTasksExtractor extracts actionable items for remote sessions")

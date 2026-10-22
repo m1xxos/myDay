@@ -87,8 +87,14 @@ public enum PromptTemplates {
             text += """
 
             ВАЖНЫЕ ИНСТРУКЦИИ ДЛЯ УДАЛЕННЫХ СТОЛОВ (Windows App / RDP):
-            - Если пользователь проводит большую часть времени в Windows App (удаленка), заголовок окна в macOS (напр. wab2.bspb.ru) является лишь адресом сервера.
-            - Определи реальную деятельность пользователя (разработка, администрирование, работа с документами/данными, задачи) ПО КЛЮЧЕВЫМ СЛОВАМ OCR И ВИДИМОМУ ТЕКСТУ ВНУТРИ УДАЛЕНКИ.
+            - Windows App — это основная рабочая удаленка пользователя. Любая деятельность внутри неё (администрирование серверов, баз данных, терминалы SSH, корпоративные системы Naumen, таски, работа с документами/ПО) СТРОГО классифицируется как "Work" (или "Development", если ведется программирование/SQL), но КАТЕГОРИЧЕСКИ НЕ "Utility"!
+            - Заголовок окна в macOS (напр. wab2.bspb.ru) является лишь адресом сервера/шлюза.
+            - Определи реальную рабочую деятельность пользователя ПО КЛЮЧЕВЫМ СЛОВАМ OCR И ВИДИМОМУ ЭКРАНУ.
+            - Выбирай категорию:
+              * "Work" — для администрирования серверов/БД, мониторинга, DevOps, корпоративных систем, рабочих задач.
+              * "Development" — для написания кода, отладки, программирования, верстки.
+              * "Writing" — для работы с текстами, отчетами, Excel, документацией.
+            - Категорию "Utility" используй ИСКЛЮЧИТЕЛЬНО для локальных служебных настроек macOS (System Settings, Activity Monitor, Disk Utility).
             - НЕ присваивай активность второстепенным фоновым приложениям (мессенджерам вроде VK WorkSpace, Telegram), если основное время проведено в Windows App!
 
             """
@@ -101,7 +107,7 @@ public enum PromptTemplates {
           "is_continuation": false, // boolean: true if continuing previous activity, false if starting a new distinct task
           "title": "Concise descriptive title of what was done (max 6-8 words, in Russian if user works in Russian or English if in English)",
           "summary": "1-2 brief bullet points or sentences describing the work accomplished (REQUIRED, do not leave empty)",
-          "category": "Development | Writing | Research | Communication | Design | Entertainment | Utility | Other",
+          "category": "Work | Development | Writing | Research | Communication | Design | Entertainment | Utility | Other",
           "tags": ["tag1", "tag2", "tag3"]
         }
         """
@@ -144,7 +150,7 @@ public enum PromptTemplates {
             {
               "title": "Concise task title (4-8 words in Russian)",
               "app_name": "App name (e.g. Zen, Xcode, Warp, Obsidian)",
-              "category": "Development | Writing | Research | Communication | Design | Entertainment | Utility | Other"
+              "category": "Work | Development | Writing | Research | Communication | Design | Entertainment | Utility | Other"
             }
           ]
         }

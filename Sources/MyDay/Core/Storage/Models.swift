@@ -3,6 +3,7 @@ import Foundation
 // MARK: - Activity Category
 
 public enum ActivityCategory: String, Codable, CaseIterable, Sendable {
+    case work = "Work"
     case development = "Development"
     case writing = "Writing"
     case research = "Research"
@@ -14,6 +15,7 @@ public enum ActivityCategory: String, Codable, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
+        case .work: return "Работа"
         case .development: return "Разработка"
         case .writing: return "Тексты / Документы"
         case .research: return "Исследования / Браузер"
@@ -27,6 +29,7 @@ public enum ActivityCategory: String, Codable, CaseIterable, Sendable {
 
     public var sfSymbol: String {
         switch self {
+        case .work: return "briefcase.fill"
         case .development: return "hammer.fill"
         case .writing: return "pencil.line"
         case .research: return "safari.fill"
@@ -40,6 +43,7 @@ public enum ActivityCategory: String, Codable, CaseIterable, Sendable {
 
     public var colorHex: String {
         switch self {
+        case .work: return "#2979FF"        // Electric / Work Blue
         case .development: return "#4A90E2" // Crisp Blue
         case .writing: return "#7E57C2"     // Deep Lavender
         case .research: return "#26A69A"    // Teal
@@ -55,7 +59,9 @@ public enum ActivityCategory: String, Codable, CaseIterable, Sendable {
         let lowered = string.lowercased()
 
         // 1. Direct string match
-        if lowered.contains("dev") || lowered.contains("code") || lowered.contains("разработ") || lowered.contains("program") || lowered.contains("xcode") || lowered.contains("terminal") || lowered.contains("warp") || lowered.contains("studio") {
+        if lowered.contains("work") || lowered.contains("работ") || lowered.contains("job") {
+            return .work
+        } else if lowered.contains("dev") || lowered.contains("code") || lowered.contains("разработ") || lowered.contains("program") || lowered.contains("xcode") || lowered.contains("terminal") || lowered.contains("warp") || lowered.contains("studio") {
             return .development
         } else if lowered.contains("writ") || lowered.contains("text") || lowered.contains("документ") || lowered.contains("note") || lowered.contains("obsidian") || lowered.contains("notion") {
             return .writing
@@ -77,20 +83,20 @@ public enum ActivityCategory: String, Codable, CaseIterable, Sendable {
             if joinedOCR.contains("code") || joinedOCR.contains("sql") || joinedOCR.contains("api") || joinedOCR.contains("git") || joinedOCR.contains("dev") || joinedOCR.contains("func") || joinedOCR.contains("class") || joinedOCR.contains("build") || joinedOCR.contains("error") || joinedOCR.contains("debug") || joinedOCR.contains("studio") {
                 return .development
             }
+            if joinedOCR.contains("server") || joinedOCR.contains("admin") || joinedOCR.contains("сервер") || joinedOCR.contains("терминал") || joinedOCR.contains("cmd") || joinedOCR.contains("powershell") || joinedOCR.contains("ssh") || joinedOCR.contains("devops") || joinedOCR.contains("kesl") || joinedOCR.contains("naumen") {
+                return .work
+            }
             if joinedOCR.contains("doc") || joinedOCR.contains("excel") || joinedOCR.contains("отчет") || joinedOCR.contains("таблиц") || joinedOCR.contains("документ") || joinedOCR.contains("word") {
                 return .writing
-            }
-            if joinedOCR.contains("server") || joinedOCR.contains("admin") || joinedOCR.contains("сервер") || joinedOCR.contains("терминал") || joinedOCR.contains("cmd") || joinedOCR.contains("powershell") {
-                return .utility
             }
             if joinedOCR.contains("call") || joinedOCR.contains("видеозвонок") || joinedOCR.contains("звонки") || joinedOCR.contains("чат") || joinedOCR.contains("клиенты") {
                 return .communication
             }
         }
 
-        // Remote desktop default is development/work rather than generic other
-        if lowered.contains("windows app") || lowered.contains("remote desktop") || lowered.contains("rdp") {
-            return .development
+        // Remote desktop default is ALWAYS Work (or Development) — NEVER Utility / System!
+        if lowered.contains("windows app") || lowered.contains("remote desktop") || lowered.contains("rdp") || lowered.contains("wab2") {
+            return .work
         }
 
         return .other
