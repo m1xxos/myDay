@@ -239,32 +239,54 @@ public struct SidebarView: View {
             Divider()
                 .opacity(0.3)
 
-            // Footer: LM Studio Status & Settings Button
+            // Footer: Engine Mode Status & Settings Button
             HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(appState.isLMStudioConnected ? Color.green.opacity(0.25) : Color.red.opacity(0.25))
-                        .frame(width: 14, height: 14)
+                if appState.settings.engineMode == .native {
+                    ZStack {
+                        Circle()
+                            .fill(Color.blue.opacity(0.2))
+                            .frame(width: 16, height: 16)
 
-                    Circle()
-                        .fill(appState.isLMStudioConnected ? Color.green : Color.red)
-                        .frame(width: 7, height: 7)
-                }
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.blue)
+                    }
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(appState.isLMStudioConnected ? "LM Studio Active" : "LM Studio Offline")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.primary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Нативный режим")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.primary)
 
-                    if appState.isLMStudioConnected {
-                        Text(appState.settings.selectedModel)
-                            .font(.system(size: 9, design: .monospaced))
+                        Text("Автономно · 0% CPU")
+                            .font(.system(size: 9))
                             .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    } else {
-                        Text("127.0.0.1:1234")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    ZStack {
+                        Circle()
+                            .fill(appState.isLMStudioConnected ? Color.green.opacity(0.25) : Color.red.opacity(0.25))
+                            .frame(width: 14, height: 14)
+
+                        Circle()
+                            .fill(appState.isLMStudioConnected ? Color.green : Color.red)
+                            .frame(width: 7, height: 7)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(appState.isLMStudioConnected ? "LM Studio Active" : "LM Studio Offline")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.primary)
+
+                        if appState.isLMStudioConnected {
+                            Text(appState.settings.selectedModel)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        } else {
+                            Text("127.0.0.1:1234")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
 

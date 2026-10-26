@@ -172,8 +172,8 @@ public final class DaySummaryViewModel: ObservableObject {
         self.unfinishedTasks = heuristicTasks
         saveTasks(heuristicTasks, dateKey: dateKey)
 
-        // C. Asynchronous AI extraction if LM Studio is connected
-        if appState.isLMStudioConnected && appState.settings.autoAnalyze {
+        // C. Asynchronous AI extraction if LM Studio is connected and engineMode is lmStudio
+        if appState.settings.engineMode == .lmStudio && appState.isLMStudioConnected && appState.settings.autoAnalyze {
             self.isLoadingTasks = true
             Task {
                 do {

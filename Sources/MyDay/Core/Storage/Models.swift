@@ -248,6 +248,29 @@ public struct RecordedFrame: Codable, Identifiable, Sendable {
     }
 }
 
+// MARK: - Engine Mode
+
+public enum EngineMode: String, Codable, CaseIterable, Sendable {
+    case native = "Native"       // ⚡️ Нативный режим (Без ИИ)
+    case lmStudio = "LMStudio"   // 🤖 С локальным ИИ (LM Studio)
+
+    public var displayName: String {
+        switch self {
+        case .native: return "Нативный (Без ИИ)"
+        case .lmStudio: return "Локальный ИИ (LM Studio)"
+        }
+    }
+
+    public var localizedDescription: String {
+        switch self {
+        case .native:
+            return "Работает автономно: встроенный Apple Vision OCR + эвристики окон macOS. Мгновенная скорость (0 мс), 0 МБ VRAM, 0% расхода батареи."
+        case .lmStudio:
+            return "Использует локальную языковую модель из LM Studio для генерации детальных текстовых описаний и задач."
+        }
+    }
+}
+
 // MARK: - Analysis Mode
 
 public enum AnalysisMode: String, Codable, CaseIterable, Sendable {
@@ -267,6 +290,7 @@ public enum AnalysisMode: String, Codable, CaseIterable, Sendable {
 // MARK: - User Settings
 
 public struct UserSettings: Codable, Sendable {
+    public var engineMode: EngineMode
     public var lmStudioEndpoint: String
     public var selectedModel: String
     public var analysisMode: AnalysisMode
@@ -279,6 +303,7 @@ public struct UserSettings: Codable, Sendable {
     public var excludePrivateBrowsing: Bool
 
     public init(
+        engineMode: EngineMode = .native,
         lmStudioEndpoint: String = "http://127.0.0.1:1234/v1",
         selectedModel: String = "qwen3-vl-4b-instruct",
         analysisMode: AnalysisMode = .textFirst,
@@ -290,6 +315,7 @@ public struct UserSettings: Codable, Sendable {
         autoAnalyze: Bool = true,
         excludePrivateBrowsing: Bool = true
     ) {
+        self.engineMode = engineMode
         self.lmStudioEndpoint = lmStudioEndpoint
         self.selectedModel = selectedModel
         self.analysisMode = analysisMode
@@ -305,6 +331,7 @@ public struct UserSettings: Codable, Sendable {
     public static let `default` = UserSettings()
 
     enum CodingKeys: String, CodingKey {
+        case engineMode
         case lmStudioEndpoint
         case selectedModel
         case analysisMode
@@ -319,6 +346,7 @@ public struct UserSettings: Codable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        engineMode = try container.decodeIfPresent(EngineMode.self, forKey: .engineMode) ?? .native
         lmStudioEndpoint = try container.decodeIfPresent(String.self, forKey: .lmStudioEndpoint) ?? "http://127.0.0.1:1234/v1"
         selectedModel = try container.decodeIfPresent(String.self, forKey: .selectedModel) ?? "qwen3-vl-4b-instruct"
         analysisMode = try container.decodeIfPresent(AnalysisMode.self, forKey: .analysisMode) ?? .textFirst

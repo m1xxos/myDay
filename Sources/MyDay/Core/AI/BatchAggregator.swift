@@ -175,15 +175,22 @@ public final class BatchAggregator: @unchecked Sendable {
             }
         }
 
-        var cardTitle = "Работа в \(primaryApp)"
-        var cardSummary = "Сессия активности в приложениях: " + appSlices.map { $0.appName }.joined(separator: ", ")
-        var cardCategory = ActivityCategory.match(from: primaryApp, ocrKeywords: ocrKeywords)
+        // Generate smart heuristic card data (used for Native mode and as reliable fallback)
         let isPrimaryRDP = WindowTracker.isRemoteDesktopOrVM(appName: primaryApp, bundleId: appSlices.first?.bundleId ?? "")
+        let heuristic = Self.generateSmartHeuristicCard(
+            primaryApp: primaryApp,
+            appSlices: appSlices,
+            ocrKeywords: ocrKeywords,
+            keyTextLines: keyTextLines
+        )
+        var cardTitle = heuristic.title
+        var cardSummary = heuristic.summary
+        var cardCategory = heuristic.category
         if isPrimaryRDP && (cardCategory == .utility || cardCategory == .other) {
             cardCategory = .work
         }
-        var cardTags: [String] = [primaryApp.lowercased()]
-        var isAnalyzed = false
+        var cardTags: [String] = heuristic.tags
+        var isAnalyzed = (settings.engineMode == .native)
         var isContinuationAI = false
 
         let lastCard = DatabaseManager.shared.fetchAllCards(limit: 1).first
@@ -194,8 +201,8 @@ public final class BatchAggregator: @unchecked Sendable {
             previousContext = (title: last.title, summary: last.summary)
         }
 
-        // Try AI analysis via LM Studio if enabled
-        if settings.autoAnalyze {
+        // Try AI analysis via LM Studio only if engineMode is lmStudio and autoAnalyze is on
+        if settings.engineMode == .lmStudio && settings.autoAnalyze {
             let prompt = PromptTemplates.buildUserPrompt(
                 timeRangeString: rangeStr,
                 appUsages: appSlices,
@@ -223,7 +230,7 @@ public final class BatchAggregator: @unchecked Sendable {
                 isContinuationAI = aiResponse.is_continuation
                 isAnalyzed = true
             } catch {
-                print("[BatchAggregator] LM Studio call skipped/failed: \(error.localizedDescription). Falling back to heuristic card.")
+                print("[BatchAggregator] LM Studio call skipped/failed: \(error.localizedDescription). Using smart heuristic card.")
             }
         }
 
@@ -427,5 +434,189 @@ public final class BatchAggregator: @unchecked Sendable {
 
         // Overlap coefficient: ratio of shared content words to the shorter title
         return Double(intersection.count) / Double(minCount)
+    }
+
+    // MARK: - Smart Native Heuristic Card Generation (0ms, 0 RAM, 100% Offline)
+
+    public static func generateSmartHeuristicCard(
+        primaryApp: String,
+        appSlices: [AppUsageSlice],
+        ocrKeywords: [String],
+        keyTextLines: [String]
+    ) -> (title: String, summary: String, category: ActivityCategory, tags: [String]) {
+        let isRDP = WindowTracker.isRemoteDesktopOrVM(appName: primaryApp, bundleId: appSlices.first?.bundleId ?? "")
+        var category = ActivityCategory.match(from: primaryApp, ocrKeywords: ocrKeywords)
+        if isRDP && (category == .utility || category == .other) {
+            category = .work
+        }
+
+        let primarySlice = appSlices.first(where: { $0.appName == primaryApp }) ?? appSlices.first
+        let topRawTitle = primarySlice?.windowTitles.first(where: {
+            let t = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !t.isEmpty && t.lowercased() != primaryApp.lowercased()
+        }) ?? ""
+
+        var title = ""
+        let loweredApp = primaryApp.lowercased()
+        let cleanTitle = cleanRawTitle(topRawTitle, appName: primaryApp)
+
+        // 1. Remote Desktop / Windows App
+        if isRDP {
+            let ocrText = (ocrKeywords + keyTextLines).joined(separator: " ").lowercased()
+            if ocrText.contains("dbeaver") || ocrText.contains("sql") || ocrText.contains("select") || ocrText.contains("postgres") || ocrText.contains("mysql") || ocrText.contains("database") {
+                title = "Работа с базами данных (DBeaver / SQL)"
+                category = .work
+            } else if ocrText.contains("kesl") || ocrText.contains("systemctl") || ocrText.contains("journalctl") || ocrText.contains("rpm") || ocrText.contains("ssh") || ocrText.contains("admin") || ocrText.contains("server") {
+                title = "Администрирование серверов и служб (SSH)"
+                category = .work
+            } else if ocrText.contains("naumen") || ocrText.contains("service desk") || ocrText.contains("инцидент") || ocrText.contains("заявка") {
+                title = "Обработка обращений в Naumen Service Desk"
+                category = .work
+            } else if ocrText.contains("keycloak") || ocrText.contains("realm") || ocrText.contains("auth") {
+                title = "Администрирование событий и пользователей Keycloak"
+                category = .work
+            } else if ocrText.contains("code") || ocrText.contains("git") || ocrText.contains("build") || ocrText.contains("debug") {
+                title = "Разработка и отладка в удаленной сессии"
+                category = .development
+            } else if ocrText.contains("excel") || ocrText.contains("отчет") || ocrText.contains("таблиц") {
+                title = "Работа с отчетами и таблицами"
+                category = .writing
+            } else {
+                title = "Удаленная работа в Windows App"
+                category = .work
+            }
+        }
+        // 2. Browsers (Zen, Safari, Chrome, Firefox, Arc, Edge)
+        else if loweredApp.contains("zen") || loweredApp.contains("safari") || loweredApp.contains("chrome") || loweredApp.contains("firefox") || loweredApp.contains("arc") || loweredApp.contains("edge") {
+            let loweredTitle = topRawTitle.lowercased()
+            if loweredTitle.contains("youtube") {
+                let videoName = cleanYouTubeTitle(topRawTitle)
+                title = videoName.isEmpty ? "Просмотр видео на YouTube" : "Просмотр: \(videoName)"
+                category = .entertainment
+            } else if loweredTitle.contains("google search") || loweredTitle.contains("поиск") || loweredTitle.contains("яндекс") {
+                let query = cleanSearchTitle(topRawTitle)
+                title = query.isEmpty ? "Поиск информации в интернете" : "Поиск: \(query)"
+                category = .research
+            } else if loweredTitle.contains("github") || loweredTitle.contains("gitlab") || loweredTitle.contains("codeberg") || loweredTitle.contains("stackoverflow") {
+                title = cleanTitle.isEmpty ? "Изучение кода и репозиториев" : "Изучение репозитория: \(cleanTitle)"
+                category = .development
+            } else if !cleanTitle.isEmpty {
+                title = "Изучение: \(cleanTitle)"
+            } else {
+                title = "Просмотр веб-страниц в \(primaryApp)"
+            }
+        }
+        // 3. Coding & Terminals (Xcode, VS Code, Warp, Terminal, Cursor)
+        else if category == .development || loweredApp.contains("xcode") || loweredApp.contains("code") || loweredApp.contains("warp") || loweredApp.contains("terminal") || loweredApp.contains("cursor") {
+            if !cleanTitle.isEmpty {
+                title = "Разработка: \(cleanTitle)"
+            } else {
+                title = "Разработка в \(primaryApp)"
+            }
+        }
+        // 4. Messengers & Communication (Telegram, Slack, VK WorkSpace, Discord, Zoom)
+        else if category == .communication || loweredApp.contains("telegram") || loweredApp.contains("slack") || loweredApp.contains("vk") || loweredApp.contains("discord") || loweredApp.contains("zoom") {
+            if topRawTitle.lowercased().contains("in call") || topRawTitle.lowercased().contains("звонок") {
+                title = "Рабочий созвон в \(primaryApp)"
+            } else if !cleanTitle.isEmpty {
+                title = "Общение в \(primaryApp) (\(cleanTitle))"
+            } else {
+                title = "Общение в \(primaryApp)"
+            }
+        }
+        // 5. Notes & Writing (Obsidian, Notion, Notes, Word, Pages, Excel)
+        else if category == .writing || loweredApp.contains("obsidian") || loweredApp.contains("notion") || loweredApp.contains("notes") || loweredApp.contains("word") || loweredApp.contains("pages") {
+            if !cleanTitle.isEmpty {
+                title = "Документ: \(cleanTitle)"
+            } else {
+                title = "Работа с текстами в \(primaryApp)"
+            }
+        }
+        // 6. Design (Figma, Sketch, Photoshop, Illustrator)
+        else if category == .design || loweredApp.contains("figma") || loweredApp.contains("sketch") {
+            if !cleanTitle.isEmpty {
+                title = "Дизайн: \(cleanTitle)"
+            } else {
+                title = "Работа над макетами в \(primaryApp)"
+            }
+        }
+        // 7. General Fallback
+        else {
+            if !cleanTitle.isEmpty {
+                title = "\(cleanTitle) (\(primaryApp))"
+            } else {
+                title = "Активность в \(primaryApp)"
+            }
+        }
+
+        // Summary generation
+        var summaryLines: [String] = []
+        let totalDuration = max(1.0, appSlices.reduce(0.0) { $0 + $1.durationSeconds })
+        let appsDesc = appSlices.prefix(3).map { slice in
+            let pct = Int((slice.durationSeconds / totalDuration) * 100.0)
+            return "\(slice.appName) (\(pct)%)"
+        }.joined(separator: ", ")
+        summaryLines.append("Приложения: \(appsDesc)")
+
+        let distinctWindows = Array(Set(appSlices.flatMap { $0.windowTitles }))
+            .map { cleanRawTitle($0, appName: "") }
+            .filter { !$0.isEmpty && $0.count > 2 }
+        if !distinctWindows.isEmpty {
+            summaryLines.append("Окна: " + distinctWindows.prefix(3).joined(separator: " · "))
+        }
+
+        if !ocrKeywords.isEmpty {
+            let topOCR = ocrKeywords.prefix(5).joined(separator: ", ")
+            summaryLines.append("Ключевые слова: \(topOCR)")
+        }
+
+        let summary = summaryLines.joined(separator: "\n")
+
+        var tags: [String] = [primaryApp.lowercased(), category.displayName.lowercased()]
+        for kw in ocrKeywords.prefix(4) {
+            let cleanKw = kw.lowercased().trimmingCharacters(in: .whitespaces)
+            if cleanKw.count >= 3 && !tags.contains(cleanKw) {
+                tags.append(cleanKw)
+            }
+        }
+
+        return (title: title, summary: summary, category: category, tags: tags)
+    }
+
+    private static func cleanRawTitle(_ raw: String, appName: String) -> String {
+        var str = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffixes = [
+            " - Zen Browser", " - Google Chrome", " — Safari", " - Mozilla Firefox",
+            " - Visual Studio Code", " — Edited", " - Telegram", " - Warp", " - Discord"
+        ]
+        for s in suffixes {
+            if str.hasSuffix(s) {
+                str = String(str.dropLast(s.count))
+            }
+        }
+        if str.lowercased() == appName.lowercased() {
+            return ""
+        }
+        return str.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func cleanYouTubeTitle(_ raw: String) -> String {
+        var str = raw.replacingOccurrences(of: " - YouTube", with: "")
+        str = str.replacingOccurrences(of: " — YouTube", with: "")
+        str = str.replacingOccurrences(of: "YouTube", with: "")
+        if let range = str.range(of: #"^\(\d+\)\s*"#, options: .regularExpression) {
+            str.removeSubrange(range)
+        }
+        if str.hasPrefix("▶ ") {
+            str = String(str.dropFirst(2))
+        }
+        return str.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func cleanSearchTitle(_ raw: String) -> String {
+        var str = raw.replacingOccurrences(of: " - Google Search", with: "")
+        str = str.replacingOccurrences(of: " - Поиск в Google", with: "")
+        str = str.replacingOccurrences(of: " — Яндекс: нашлось", with: "")
+        return str.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

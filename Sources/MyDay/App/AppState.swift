@@ -169,11 +169,20 @@ public final class AppState: ObservableObject {
         }
         // Restart capture loop with new interval if changed
         startCaptureLoop()
+        if newSettings.engineMode == .lmStudio {
+            checkLMStudio()
+        } else {
+            self.isLMStudioConnected = false
+        }
     }
 
     // MARK: - LM Studio Probing
 
     public func checkLMStudio() {
+        guard settings.engineMode == .lmStudio else {
+            self.isLMStudioConnected = false
+            return
+        }
         Task {
             do {
                 let models = try await lmStudio.fetchAvailableModels(baseURL: settings.lmStudioEndpoint)

@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 public final class SettingsViewModel: ObservableObject {
+    @Published public var engineMode: EngineMode = .native
     @Published public var endpoint: String = ""
     @Published public var selectedModel: String = ""
     @Published public var analysisMode: AnalysisMode = .textFirst
@@ -18,6 +19,7 @@ public final class SettingsViewModel: ObservableObject {
     public init() {}
 
     public func load(from settings: UserSettings) {
+        self.engineMode = settings.engineMode
         self.endpoint = settings.lmStudioEndpoint
         self.selectedModel = settings.selectedModel
         self.analysisMode = settings.analysisMode
@@ -50,6 +52,7 @@ public final class SettingsViewModel: ObservableObject {
 
     public func save(to appState: AppState) {
         var updated = appState.settings
+        updated.engineMode = engineMode
         updated.lmStudioEndpoint = endpoint
         updated.selectedModel = selectedModel
         updated.analysisMode = analysisMode
@@ -93,43 +96,60 @@ public struct SettingsView: View {
             .overlay(Divider(), alignment: .bottom)
 
             Form {
-                // Section 1: LM Studio Provider
+                // Section 1: Режим движка анализа
                 Section {
-                    TextField("Endpoint LM Studio:", text: $vm.endpoint)
-                        .textFieldStyle(.roundedBorder)
-
-                    HStack {
-                        Button("Проверить соединение") {
-                            vm.testConnection(appState: appState)
-                        }
-                        if let status = vm.connectionStatus {
-                            Text(status)
-                                .font(.caption)
-                                .foregroundColor(status.contains("OK") ? .green : .red)
-                        }
+                    Picker("Режим работы:", selection: $vm.engineMode) {
+                        Text(EngineMode.native.displayName).tag(EngineMode.native)
+                        Text(EngineMode.lmStudio.displayName).tag(EngineMode.lmStudio)
                     }
+                    .pickerStyle(.segmented)
 
-                    if !appState.availableModels.isEmpty {
-                        Picker("Модель:", selection: $vm.selectedModel) {
-                            ForEach(appState.availableModels, id: \.self) { model in
-                                Text(model).tag(model)
+                    HStack(spacing: 8) {
+                        Image(systemName: vm.engineMode == .native ? "bolt.fill" : "cpu")
+                            .foregroundColor(vm.engineMode == .native ? .blue : .purple)
+                        Text(vm.engineMode.localizedDescription)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 2)
+
+                    if vm.engineMode == .lmStudio {
+                        TextField("Endpoint LM Studio:", text: $vm.endpoint)
+                            .textFieldStyle(.roundedBorder)
+
+                        HStack {
+                            Button("Проверить соединение") {
+                                vm.testConnection(appState: appState)
+                            }
+                            if let status = vm.connectionStatus {
+                                Text(status)
+                                    .font(.caption)
+                                    .foregroundColor(status.contains("OK") ? .green : .red)
                             }
                         }
-                    }
 
-                    Picker("Режим анализа:", selection: $vm.analysisMode) {
-                        ForEach(AnalysisMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
+                        if !appState.availableModels.isEmpty {
+                            Picker("Модель:", selection: $vm.selectedModel) {
+                                ForEach(appState.availableModels, id: \.self) { model in
+                                    Text(model).tag(model)
+                                }
+                            }
                         }
+
+                        Picker("Режим анализа:", selection: $vm.analysisMode) {
+                            ForEach(AnalysisMode.allCases, id: \.self) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+
+                        Text(vm.analysisMode.localizedDescription)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Toggle("Автоматический анализ при закрытии блока", isOn: $vm.autoAnalyze)
                     }
-
-                    Text(vm.analysisMode.localizedDescription)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Toggle("Автоматический анализ при закрытии блока", isOn: $vm.autoAnalyze)
                 } header: {
-                    Text("Провайдер ИИ (LM Studio)")
+                    Text("Движок анализа и описания активности")
                 }
 
                 // Section 2: Оптимизация захвата

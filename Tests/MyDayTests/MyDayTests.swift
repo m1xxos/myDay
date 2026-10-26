@@ -231,4 +231,84 @@ struct MyDayTests {
         #expect(!tasks.isEmpty)
         #expect(tasks.contains(where: { $0.appName == "Windows App" }))
     }
+
+    @Test("Smart Heuristic Card Generation (Native Mode without AI)")
+    func testSmartHeuristicCardGeneration() throws {
+        // 1. YouTube video in Zen Browser
+        let zenSlice = AppUsageSlice(
+            appName: "Zen",
+            bundleId: "app.zen-browser.zen",
+            durationSeconds: 600,
+            windowTitles: ["Hyperoptimized Engineer 2026 - YouTube", "Zen Browser"]
+        )
+        let youtubeCard = BatchAggregator.generateSmartHeuristicCard(
+            primaryApp: "Zen",
+            appSlices: [zenSlice],
+            ocrKeywords: ["Hyperoptimized", "Engineer"],
+            keyTextLines: ["YouTube", "Hyperoptimized Engineer 2026"]
+        )
+        #expect(youtubeCard.category == .entertainment)
+        #expect(youtubeCard.title.contains("Hyperoptimized Engineer 2026"))
+
+        // 2. Database session in Windows App
+        let rdpSlice = AppUsageSlice(
+            appName: "Windows App",
+            bundleId: "com.microsoft.rdc.macos",
+            durationSeconds: 1200,
+            windowTitles: ["wab2.bspb.ru"]
+        )
+        let dbCard = BatchAggregator.generateSmartHeuristicCard(
+            primaryApp: "Windows App",
+            appSlices: [rdpSlice],
+            ocrKeywords: ["DBeaver", "PostgreSQL", "SELECT", "naumen-prod"],
+            keyTextLines: ["SELECT version();", "DBeaver 24.3"]
+        )
+        #expect(dbCard.category == .work)
+        #expect(dbCard.title.contains("DBeaver") || dbCard.title.contains("базами данных"))
+
+        // 3. Coding session in Xcode
+        let xcodeSlice = AppUsageSlice(
+            appName: "Xcode",
+            bundleId: "com.apple.dt.Xcode",
+            durationSeconds: 900,
+            windowTitles: ["MyDay — DateNavigatorView.swift"]
+        )
+        let codeCard = BatchAggregator.generateSmartHeuristicCard(
+            primaryApp: "Xcode",
+            appSlices: [xcodeSlice],
+            ocrKeywords: ["struct", "View", "body"],
+            keyTextLines: ["public struct DateNavigatorView: View"]
+        )
+        #expect(codeCard.category == .development)
+        #expect(codeCard.title.contains("DateNavigatorView.swift"))
+
+        // 4. Communication in Telegram
+        let tgSlice = AppUsageSlice(
+            appName: "Telegram",
+            bundleId: "ru.keepcoder.Telegram",
+            durationSeconds: 300,
+            windowTitles: ["Telegram @ Мишаня"]
+        )
+        let chatCard = BatchAggregator.generateSmartHeuristicCard(
+            primaryApp: "Telegram",
+            appSlices: [tgSlice],
+            ocrKeywords: [],
+            keyTextLines: []
+        )
+        #expect(chatCard.category == .communication)
+        #expect(chatCard.title.contains("Мишаня"))
+    }
+
+    @Test("EngineMode Settings Serialization")
+    func testEngineModeSerialization() throws {
+        let settings = UserSettings(engineMode: .native)
+        let encoded = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(UserSettings.self, from: encoded)
+        #expect(decoded.engineMode == .native)
+
+        let aiSettings = UserSettings(engineMode: .lmStudio)
+        let aiEncoded = try JSONEncoder().encode(aiSettings)
+        let aiDecoded = try JSONDecoder().decode(UserSettings.self, from: aiEncoded)
+        #expect(aiDecoded.engineMode == .lmStudio)
+    }
 }
