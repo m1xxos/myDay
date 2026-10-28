@@ -40,6 +40,7 @@ public final class AppState: ObservableObject {
 
     // MARK: - Private Services
     private var captureTimer: Timer?
+    private var dailyCleanupTimer: Timer?
     private var lastCaptureTime: Date = Date()
     private var lastSavedFrameTime: Date?
     private let db = DatabaseManager.shared
@@ -55,7 +56,8 @@ public final class AppState: ObservableObject {
         loadSettings()
         _ = db.sanitizeAndFixCrossDayCards()
         _ = db.consolidateAdjacentCards()
-        storage.enforceStorageLimit(maxSizeGB: settings.maxStorageGB)
+        performDailyCleanupIfNeeded()
+        setupDailyCleanupTimer()
         loadCards(for: selectedDate)
         checkLMStudio()
         checkPermissions()
@@ -168,13 +170,38 @@ public final class AppState: ObservableObject {
         if let encoded = try? JSONEncoder().encode(newSettings) {
             UserDefaults.standard.set(encoded, forKey: "myDaySettings")
         }
-        storage.enforceStorageLimit(maxSizeGB: newSettings.maxStorageGB)
+        storage.runCleanup(settings: newSettings)
         // Restart capture loop with new interval if changed
         startCaptureLoop()
         if newSettings.engineMode == .lmStudio {
             checkLMStudio()
         } else {
             self.isLMStudioConnected = false
+        }
+    }
+
+    // MARK: - Daily Storage Cleanup
+
+    public func performDailyCleanupIfNeeded(force: Bool = false) {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let todayKey = df.string(from: Date())
+        let lastKey = UserDefaults.standard.string(forKey: "myDay_last_daily_cleanup_key") ?? ""
+
+        if force || todayKey != lastKey {
+            print("[AppState] Running daily storage cleanup (Policy: \(settings.cleanupPolicy.rawValue))...")
+            storage.runCleanup(settings: settings)
+            UserDefaults.standard.set(todayKey, forKey: "myDay_last_daily_cleanup_key")
+        }
+    }
+
+    private func setupDailyCleanupTimer() {
+        dailyCleanupTimer?.invalidate()
+        // Check once an hour whether a new day has arrived to perform daily cleanup
+        dailyCleanupTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.performDailyCleanupIfNeeded()
+            }
         }
     }
 

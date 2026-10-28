@@ -204,4 +204,26 @@ public final class TimelapseStorage: @unchecked Sendable {
             }
         }
     }
+
+    // MARK: - Unified Cleanup by UserSettings Policy
+
+    public func runCleanup(settings: UserSettings) {
+        runCleanup(
+            policy: settings.cleanupPolicy,
+            retentionDays: settings.retentionDays,
+            maxStorageGB: settings.maxStorageGB
+        )
+    }
+
+    public func runCleanup(policy: StorageCleanupPolicy, retentionDays: Int, maxStorageGB: Double) {
+        switch policy {
+        case .bySize:
+            enforceStorageLimit(maxSizeGB: maxStorageGB)
+        case .byDays:
+            cleanOldFrames(retentionDays: retentionDays)
+        case .byBoth:
+            cleanOldFrames(retentionDays: retentionDays)
+            enforceStorageLimit(maxSizeGB: maxStorageGB)
+        }
+    }
 }

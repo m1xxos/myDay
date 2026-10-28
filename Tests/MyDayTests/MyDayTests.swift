@@ -314,14 +314,16 @@ struct MyDayTests {
 
     @Test("Storage Limit Setting and Auto-Cleanup calculation")
     func testStorageLimitSetting() throws {
-        // Serialization of maxStorageGB
+        // Serialization of maxStorageGB & cleanupPolicy
         let defaultSettings = UserSettings()
         #expect(defaultSettings.maxStorageGB == 5.0)
+        #expect(defaultSettings.cleanupPolicy == .bySize)
 
-        let customSettings = UserSettings(maxStorageGB: 8.0)
+        let customSettings = UserSettings(maxStorageGB: 8.0, cleanupPolicy: .byDays)
         let encoded = try JSONEncoder().encode(customSettings)
         let decoded = try JSONDecoder().decode(UserSettings.self, from: encoded)
         #expect(decoded.maxStorageGB == 8.0)
+        #expect(decoded.cleanupPolicy == .byDays)
 
         // Storage size calculation returns non-negative value and formatted string
         let storage = TimelapseStorage.shared
@@ -330,5 +332,10 @@ struct MyDayTests {
 
         let formatted = storage.calculateFormattedFramesSize()
         #expect(!formatted.isEmpty)
+
+        // Test runCleanup across all policies without crashing
+        storage.runCleanup(policy: .bySize, retentionDays: 7, maxStorageGB: 50.0)
+        storage.runCleanup(policy: .byDays, retentionDays: 30, maxStorageGB: 50.0)
+        storage.runCleanup(policy: .byBoth, retentionDays: 30, maxStorageGB: 50.0)
     }
 }

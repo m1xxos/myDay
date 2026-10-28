@@ -287,6 +287,22 @@ public enum AnalysisMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+// MARK: - Storage Cleanup Policy
+
+public enum StorageCleanupPolicy: String, Codable, CaseIterable, Sendable {
+    case bySize = "by_size"
+    case byDays = "by_days"
+    case byBoth = "by_both"
+
+    public var displayName: String {
+        switch self {
+        case .bySize: return "По объёму (ГБ)"
+        case .byDays: return "По дням"
+        case .byBoth: return "По обоим критериям"
+        }
+    }
+}
+
 // MARK: - User Settings
 
 public struct UserSettings: Codable, Sendable {
@@ -300,6 +316,7 @@ public struct UserSettings: Codable, Sendable {
     public var diffThresholdPercent: Double
     public var retentionDays: Int
     public var maxStorageGB: Double
+    public var cleanupPolicy: StorageCleanupPolicy
     public var autoAnalyze: Bool
     public var excludePrivateBrowsing: Bool
 
@@ -314,6 +331,7 @@ public struct UserSettings: Codable, Sendable {
         diffThresholdPercent: Double = 2.5,
         retentionDays: Int = 7,
         maxStorageGB: Double = 5.0,
+        cleanupPolicy: StorageCleanupPolicy = .bySize,
         autoAnalyze: Bool = true,
         excludePrivateBrowsing: Bool = true
     ) {
@@ -327,6 +345,7 @@ public struct UserSettings: Codable, Sendable {
         self.diffThresholdPercent = diffThresholdPercent
         self.retentionDays = retentionDays
         self.maxStorageGB = maxStorageGB
+        self.cleanupPolicy = cleanupPolicy
         self.autoAnalyze = autoAnalyze
         self.excludePrivateBrowsing = excludePrivateBrowsing
     }
@@ -344,6 +363,7 @@ public struct UserSettings: Codable, Sendable {
         case diffThresholdPercent
         case retentionDays
         case maxStorageGB
+        case cleanupPolicy
         case autoAnalyze
         case excludePrivateBrowsing
     }
@@ -360,6 +380,7 @@ public struct UserSettings: Codable, Sendable {
         diffThresholdPercent = try container.decodeIfPresent(Double.self, forKey: .diffThresholdPercent) ?? 2.5
         retentionDays = try container.decodeIfPresent(Int.self, forKey: .retentionDays) ?? 7
         maxStorageGB = try container.decodeIfPresent(Double.self, forKey: .maxStorageGB) ?? 5.0
+        cleanupPolicy = try container.decodeIfPresent(StorageCleanupPolicy.self, forKey: .cleanupPolicy) ?? .bySize
         autoAnalyze = try container.decodeIfPresent(Bool.self, forKey: .autoAnalyze) ?? true
         excludePrivateBrowsing = try container.decodeIfPresent(Bool.self, forKey: .excludePrivateBrowsing) ?? true
     }

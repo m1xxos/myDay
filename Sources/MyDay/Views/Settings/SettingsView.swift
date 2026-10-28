@@ -13,6 +13,7 @@ public final class SettingsViewModel: ObservableObject {
     @Published public var diffThreshold: Double = 2.5
     @Published public var retentionDays: Int = 7
     @Published public var maxStorageGB: Double = 5.0
+    @Published public var cleanupPolicy: StorageCleanupPolicy = .bySize
     @Published public var currentStorageSize: String = ""
     @Published public var autoAnalyze: Bool = true
     @Published public var excludePrivateBrowsing: Bool = true
@@ -31,6 +32,7 @@ public final class SettingsViewModel: ObservableObject {
         self.diffThreshold = settings.diffThresholdPercent
         self.retentionDays = settings.retentionDays
         self.maxStorageGB = settings.maxStorageGB
+        self.cleanupPolicy = settings.cleanupPolicy
         self.refreshStorageSize()
         self.autoAnalyze = settings.autoAnalyze
         self.excludePrivateBrowsing = settings.excludePrivateBrowsing
@@ -66,6 +68,7 @@ public final class SettingsViewModel: ObservableObject {
         updated.diffThresholdPercent = diffThreshold
         updated.retentionDays = retentionDays
         updated.maxStorageGB = maxStorageGB
+        updated.cleanupPolicy = cleanupPolicy
         updated.autoAnalyze = autoAnalyze
         updated.excludePrivateBrowsing = excludePrivateBrowsing
 
@@ -77,10 +80,14 @@ public final class SettingsViewModel: ObservableObject {
         self.currentStorageSize = TimelapseStorage.shared.calculateFormattedFramesSize()
     }
 
-    public func enforceStorageLimitNow(appState: AppState) {
-        TimelapseStorage.shared.enforceStorageLimit(maxSizeGB: maxStorageGB)
+    public func runCleanupNow(appState: AppState) {
+        TimelapseStorage.shared.runCleanup(
+            policy: cleanupPolicy,
+            retentionDays: retentionDays,
+            maxStorageGB: maxStorageGB
+        )
         refreshStorageSize()
-        appState.showToast("Очистка по лимиту выполнена")
+        appState.showToast("Очистка хранилища выполнена")
     }
 }
 
@@ -220,16 +227,32 @@ public struct SettingsView: View {
 
                 // Section 4: Хранилище
                 Section {
-                    HStack {
-                        Text("Лимит хранилища кадров:")
-                        Spacer()
-                        Text("\(Int(vm.maxStorageGB)) ГБ")
+                    Picker("Способ автоочистки:", selection: $vm.cleanupPolicy) {
+                        ForEach(StorageCleanupPolicy.allCases, id: \.self) { policy in
+                            Text(policy.displayName).tag(policy)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if vm.cleanupPolicy == .bySize || vm.cleanupPolicy == .byBoth {
+                        HStack {
+                            Text("Лимит объёма кадров:")
+                            Spacer()
+                            Text("\(Int(vm.maxStorageGB)) ГБ")
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $vm.maxStorageGB, in: 1.0...20.0, step: 1.0)
+                        Text("При превышении лимита удаляются снимки за самые старые дни.")
+                            .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
-                    Slider(value: $vm.maxStorageGB, in: 1.0...20.0, step: 1.0)
-                    Text("Если объём снимков превысит этот лимит, приложение автоматически удалит кадры за самые старые дни (сегодняшние записи никогда не удаляются).")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+
+                    if vm.cleanupPolicy == .byDays || vm.cleanupPolicy == .byBoth {
+                        Stepper("Хранить кадры не более: \(vm.retentionDays) дней", value: $vm.retentionDays, in: 1...30)
+                        Text("Кадры старше указанного количества дней удаляются.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
 
                     HStack {
                         Text("Текущий объём скриншотов:")
@@ -239,17 +262,19 @@ public struct SettingsView: View {
                             .monospacedDigit()
                     }
 
-                    Stepper("Хранить кадры не более: \(vm.retentionDays) дней", value: $vm.retentionDays, in: 1...30)
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.clock")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 12))
+                        Text("Автопроверка и очистка выполняется раз в день. Записи за текущий день никогда не удаляются.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 2)
 
                     HStack(spacing: 12) {
-                        Button("Очистить дни сверх лимита") {
-                            vm.enforceStorageLimitNow(appState: appState)
-                        }
-
-                        Button("Очистить старее \(vm.retentionDays) дней") {
-                            TimelapseStorage.shared.cleanOldFrames(retentionDays: vm.retentionDays)
-                            vm.refreshStorageSize()
-                            appState.showToast("Устаревшие кадры удалены")
+                        Button("Очистить сейчас по выбранному правилу") {
+                            vm.runCleanupNow(appState: appState)
                         }
                     }
                 } header: {
@@ -259,7 +284,7 @@ public struct SettingsView: View {
             .formStyle(.grouped)
             .padding(10)
         }
-        .frame(width: 500, height: 620)
+        .frame(width: 500, height: 630)
         .onAppear {
             vm.load(from: appState.settings)
         }
