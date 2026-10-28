@@ -299,6 +299,7 @@ public struct UserSettings: Codable, Sendable {
     public var idleTimeoutSeconds: Double
     public var diffThresholdPercent: Double
     public var retentionDays: Int
+    public var maxStorageGB: Double
     public var autoAnalyze: Bool
     public var excludePrivateBrowsing: Bool
 
@@ -312,6 +313,7 @@ public struct UserSettings: Codable, Sendable {
         idleTimeoutSeconds: Double = 120.0,
         diffThresholdPercent: Double = 2.5,
         retentionDays: Int = 7,
+        maxStorageGB: Double = 5.0,
         autoAnalyze: Bool = true,
         excludePrivateBrowsing: Bool = true
     ) {
@@ -324,6 +326,7 @@ public struct UserSettings: Codable, Sendable {
         self.idleTimeoutSeconds = idleTimeoutSeconds
         self.diffThresholdPercent = diffThresholdPercent
         self.retentionDays = retentionDays
+        self.maxStorageGB = maxStorageGB
         self.autoAnalyze = autoAnalyze
         self.excludePrivateBrowsing = excludePrivateBrowsing
     }
@@ -340,6 +343,7 @@ public struct UserSettings: Codable, Sendable {
         case idleTimeoutSeconds
         case diffThresholdPercent
         case retentionDays
+        case maxStorageGB
         case autoAnalyze
         case excludePrivateBrowsing
     }
@@ -355,6 +359,7 @@ public struct UserSettings: Codable, Sendable {
         idleTimeoutSeconds = try container.decodeIfPresent(Double.self, forKey: .idleTimeoutSeconds) ?? 120.0
         diffThresholdPercent = try container.decodeIfPresent(Double.self, forKey: .diffThresholdPercent) ?? 2.5
         retentionDays = try container.decodeIfPresent(Int.self, forKey: .retentionDays) ?? 7
+        maxStorageGB = try container.decodeIfPresent(Double.self, forKey: .maxStorageGB) ?? 5.0
         autoAnalyze = try container.decodeIfPresent(Bool.self, forKey: .autoAnalyze) ?? true
         excludePrivateBrowsing = try container.decodeIfPresent(Bool.self, forKey: .excludePrivateBrowsing) ?? true
     }

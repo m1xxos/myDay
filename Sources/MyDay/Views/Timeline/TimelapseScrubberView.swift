@@ -22,6 +22,8 @@ public struct NativePlayerView: NSViewRepresentable {
         playerView.showsFullScreenToggleButton = (controlsStyle != .none)
         playerView.showsSharingServiceButton = (controlsStyle != .none)
         playerView.showsFrameSteppingButtons = (controlsStyle != .none)
+        playerView.showsTimecodes = (controlsStyle != .none)
+        playerView.allowsPictureInPicturePlayback = (controlsStyle != .none)
         return playerView
     }
 

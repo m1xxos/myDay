@@ -368,79 +368,81 @@ public struct DaySummaryView: View {
                             }
                         }
 
-                        Divider()
-                            .overlay(Color.white.opacity(0.06))
+                        // Section: Unfinished Tasks (LM Studio AI only)
+                        if appState.settings.engineMode == .lmStudio {
+                            Divider()
+                                .overlay(Color.white.opacity(0.06))
 
-                        // Section: Unfinished Tasks
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "checklist")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(.orange)
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "checklist")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.orange)
 
-                                    Text("НЕЗАВЕРШЕННЫЕ ДЕЛА")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundColor(.secondary)
-                                        .tracking(0.5)
+                                        Text("НЕЗАВЕРШЕННЫЕ ДЕЛА")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.secondary)
+                                            .tracking(0.5)
+                                    }
+
+                                    Spacer()
+
+                                    if vm.isLoadingTasks {
+                                        HStack(spacing: 4) {
+                                            ProgressView()
+                                                .scaleEffect(0.6)
+                                            Text("Поиск...")
+                                                .font(.system(size: 9))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    } else if !vm.unfinishedTasks.isEmpty {
+                                        let remainingCount = vm.unfinishedTasks.filter { !$0.isCompleted }.count
+                                        Text("\(remainingCount) из \(vm.unfinishedTasks.count)")
+                                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.white.opacity(0.06))
+                                            .clipShape(Capsule())
+
+                                        // Copy checklist button
+                                        Button {
+                                            vm.copyTasksToMarkdown(date: appState.selectedDate)
+                                        } label: {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: vm.copySuccessToast ? "checkmark" : "doc.on.doc")
+                                                    .font(.system(size: 9))
+                                                Text(vm.copySuccessToast ? "Скопировано!" : "Скопировать")
+                                                    .font(.system(size: 10, weight: .medium))
+                                            }
+                                            .foregroundColor(vm.copySuccessToast ? .green : .secondary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 3)
+                                            .background(Color.white.opacity(0.05))
+                                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Скопировать чеклист в Markdown для Obsidian, Things или Todoist")
+                                    }
                                 }
 
-                                Spacer()
-
-                                if vm.isLoadingTasks {
-                                    HStack(spacing: 4) {
-                                        ProgressView()
-                                            .scaleEffect(0.6)
-                                        Text("Поиск...")
-                                            .font(.system(size: 9))
+                                if vm.unfinishedTasks.isEmpty {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green.opacity(0.8))
+                                            .font(.system(size: 14))
+                                        Text("Все начатые дела за день завершены 👍")
+                                            .font(.system(size: 12))
                                             .foregroundColor(.secondary)
                                     }
-                                } else if !vm.unfinishedTasks.isEmpty {
-                                    let remainingCount = vm.unfinishedTasks.filter { !$0.isCompleted }.count
-                                    Text("\(remainingCount) из \(vm.unfinishedTasks.count)")
-                                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(.secondary)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.white.opacity(0.06))
-                                        .clipShape(Capsule())
-
-                                    // Copy checklist button
-                                    Button {
-                                        vm.copyTasksToMarkdown(date: appState.selectedDate)
-                                    } label: {
-                                        HStack(spacing: 3) {
-                                            Image(systemName: vm.copySuccessToast ? "checkmark" : "doc.on.doc")
-                                                .font(.system(size: 9))
-                                            Text(vm.copySuccessToast ? "Скопировано!" : "Скопировать")
-                                                .font(.system(size: 10, weight: .medium))
-                                        }
-                                        .foregroundColor(vm.copySuccessToast ? .green : .secondary)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(Color.white.opacity(0.05))
-                                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .help("Скопировать чеклист в Markdown для Obsidian, Things или Todoist")
-                                }
-                            }
-
-                            if vm.unfinishedTasks.isEmpty {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.green.opacity(0.8))
-                                        .font(.system(size: 14))
-                                    Text("Все начатые дела за день завершены 👍")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.vertical, 6)
-                            } else {
-                                VStack(spacing: 6) {
-                                    ForEach(vm.unfinishedTasks) { task in
-                                        UnfinishedTaskRowView(task: task) {
-                                            vm.toggleTaskCompletion(id: task.id)
+                                    .padding(.vertical, 6)
+                                } else {
+                                    VStack(spacing: 6) {
+                                        ForEach(vm.unfinishedTasks) { task in
+                                            UnfinishedTaskRowView(task: task) {
+                                                vm.toggleTaskCompletion(id: task.id)
+                                            }
                                         }
                                     }
                                 }

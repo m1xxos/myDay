@@ -311,4 +311,24 @@ struct MyDayTests {
         let aiDecoded = try JSONDecoder().decode(UserSettings.self, from: aiEncoded)
         #expect(aiDecoded.engineMode == .lmStudio)
     }
+
+    @Test("Storage Limit Setting and Auto-Cleanup calculation")
+    func testStorageLimitSetting() throws {
+        // Serialization of maxStorageGB
+        let defaultSettings = UserSettings()
+        #expect(defaultSettings.maxStorageGB == 5.0)
+
+        let customSettings = UserSettings(maxStorageGB: 8.0)
+        let encoded = try JSONEncoder().encode(customSettings)
+        let decoded = try JSONDecoder().decode(UserSettings.self, from: encoded)
+        #expect(decoded.maxStorageGB == 8.0)
+
+        // Storage size calculation returns non-negative value and formatted string
+        let storage = TimelapseStorage.shared
+        let totalSize = storage.calculateTotalFramesSize()
+        #expect(totalSize >= 0)
+
+        let formatted = storage.calculateFormattedFramesSize()
+        #expect(!formatted.isEmpty)
+    }
 }

@@ -152,6 +152,12 @@ public final class DaySummaryViewModel: ObservableObject {
     }
 
     private func loadUnfinishedTasks(cards: [TimelineCard], dateKey: String, appState: AppState) {
+        // In Native mode (without AI), unfinished tasks are completely disabled
+        guard appState.settings.engineMode == .lmStudio else {
+            self.unfinishedTasks = []
+            return
+        }
+
         guard !cards.isEmpty else {
             self.unfinishedTasks = []
             return

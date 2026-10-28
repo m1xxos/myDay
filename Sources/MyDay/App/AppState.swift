@@ -55,6 +55,7 @@ public final class AppState: ObservableObject {
         loadSettings()
         _ = db.sanitizeAndFixCrossDayCards()
         _ = db.consolidateAdjacentCards()
+        storage.enforceStorageLimit(maxSizeGB: settings.maxStorageGB)
         loadCards(for: selectedDate)
         checkLMStudio()
         checkPermissions()
@@ -167,6 +168,7 @@ public final class AppState: ObservableObject {
         if let encoded = try? JSONEncoder().encode(newSettings) {
             UserDefaults.standard.set(encoded, forKey: "myDaySettings")
         }
+        storage.enforceStorageLimit(maxSizeGB: newSettings.maxStorageGB)
         // Restart capture loop with new interval if changed
         startCaptureLoop()
         if newSettings.engineMode == .lmStudio {

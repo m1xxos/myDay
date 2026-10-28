@@ -127,4 +127,81 @@ public final class TimelapseStorage: @unchecked Sendable {
             }
         }
     }
+
+    // MARK: - Storage Size & Auto-Cleanup by Max Size
+
+    public func calculateTotalFramesSize() -> Int64 {
+        guard let dayDirs = try? fileManager.contentsOfDirectory(at: baseFramesDirectory, includingPropertiesForKeys: nil) else {
+            return 0
+        }
+        var totalSize: Int64 = 0
+        for dir in dayDirs {
+            if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) {
+                for case let fileURL as URL in enumerator {
+                    if let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
+                       let size = values.fileSize {
+                        totalSize += Int64(size)
+                    }
+                }
+            }
+        }
+        return totalSize
+    }
+
+    public func calculateFormattedFramesSize() -> String {
+        let bytes = calculateTotalFramesSize()
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    public func enforceStorageLimit(maxSizeGB: Double) {
+        guard maxSizeGB > 0 else { return }
+        let maxSizeBytes = Int64(maxSizeGB * 1024.0 * 1024.0 * 1024.0)
+        var currentTotal = calculateTotalFramesSize()
+        guard currentTotal > maxSizeBytes else { return }
+
+        guard let dayDirs = try? fileManager.contentsOfDirectory(at: baseFramesDirectory, includingPropertiesForKeys: nil) else {
+            return
+        }
+
+        // Sort day directories from oldest to newest (e.g. 2026-10-09, 2026-10-10 ...)
+        let sortedDayDirs = dayDirs.filter { url in
+            var isDir: ObjCBool = false
+            return fileManager.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+        }.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+
+        let todayString = dateFormatter.string(from: Date())
+
+        for dir in sortedDayDirs {
+            let dayName = dir.lastPathComponent
+            // Never delete today's active recordings
+            if dayName == todayString {
+                continue
+            }
+
+            var dirSize: Int64 = 0
+            if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) {
+                for case let fileURL as URL in enumerator {
+                    if let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
+                       let size = values.fileSize {
+                        dirSize += Int64(size)
+                    }
+                }
+            }
+
+            do {
+                try fileManager.removeItem(at: dir)
+                currentTotal -= dirSize
+                print("[TimelapseStorage] Deleted oldest day \(dayName) (\(ByteCountFormatter.string(fromByteCount: dirSize, countStyle: .file))) to stay under \(maxSizeGB) GB limit. New total: \(ByteCountFormatter.string(fromByteCount: currentTotal, countStyle: .file))")
+            } catch {
+                print("[TimelapseStorage] Failed to remove old directory \(dayName): \(error.localizedDescription)")
+            }
+
+            if currentTotal <= maxSizeBytes {
+                break
+            }
+        }
+    }
 }
